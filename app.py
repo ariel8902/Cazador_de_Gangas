@@ -8,7 +8,7 @@ import pandas as pd
 # CONFIGURACIÓN DE PÁGINA
 # ==========================================
 st.set_page_config(
-    page_title="Cazador de Gangas > 50%",
+    page_title="Cazador de Gangas",
     page_icon="🔥",
     layout="wide"
 )
@@ -102,18 +102,18 @@ def obtener_porcentaje_num(texto_descuento):
     return 0
 
 # ==========================================
-# BARRA LATERAL (CONTROLES)
+# BARRA LATERAL (CONTROLES Y AUDITORÍA)
 # ==========================================
 st.sidebar.title("🔥 Cazador de Gangas")
-st.sidebar.caption("Descuentos reales superiores al 50%")
+st.sidebar.caption("Descuentos reales en Colombia")
 
 modo_vista = st.sidebar.radio("Vista de navegación:", ["Catálogo Comercial 🛍️", "Tabla de Control 📊"])
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚙️ Filtros de Búsqueda")
 
-# Filtro de Porcentaje Mínimo (Ajustable, 50% por defecto)
-desc_minimo = st.sidebar.slider("Descuento Mínimo (%):", min_value=10, max_value=80, value=50, step=5)
+# Filtro de porcentaje ajustado por defecto a 30% para mayor cobertura
+desc_minimo = st.sidebar.slider("Descuento Mínimo (%):", min_value=10, max_value=80, value=30, step=5)
 
 lista_almacenes = ["Todos los Almacenes", "Éxito", "Alkosto", "Ktronix"]
 lista_categorias = ["Todas las Categorías", "Tecnología", "Electrodomésticos", "Celulares"]
@@ -130,7 +130,7 @@ st.sidebar.metric("Clics en Ofertas", stats["clics_ofertas"])
 # PANEL PRINCIPAL
 # ==========================================
 st.title("🔥 Las Mejores Gangas de Colombia")
-st.write("Verificamos y filtramos únicamente las rebajas más drásticas del mercado.")
+st.write("Verificamos y filtramos las ofertas del mercado.")
 
 st.markdown("""
     <div class="banner-publicidad">
@@ -140,7 +140,6 @@ st.markdown("""
 
 todas_ofertas = cargar_ofertas_guardadas()
 
-# Filtrar ofertas con coincidencia flexible (sin importar mayúsculas/minúsculas)
 ofertas_filtradas = []
 for prod in todas_ofertas:
     pct = obtener_porcentaje_num(prod.get("Descuento", "0"))
@@ -149,13 +148,11 @@ for prod in todas_ofertas:
     
     cumple_descuento = pct >= desc_minimo
     
-    # Coincidencia flexible de almacén
     if alm_seleccionado == "Todos los Almacenes":
         cumple_almacen = True
     else:
         cumple_almacen = alm_seleccionado.lower() in alm_prod or alm_prod in alm_seleccionado.lower()
         
-    # Coincidencia flexible de categoría
     if cat_seleccionada == "Todas las Categorías":
         cumple_categoria = True
     else:
@@ -210,4 +207,4 @@ if ofertas_filtradas:
             use_container_width=True
         )
 else:
-    st.info(f"No hay ofertas cargadas que cumplan con los criterios actuales (≥ {desc_minimo}% de descuento). Intente bajar el descuento a 30% o 40% en la barra lateral para verificar las ofertas de menor rango.")
+    st.info(f"No hay ofertas cargadas con descuento ≥ {desc_minimo}%. Intente bajar el porcentaje en la barra lateral.")
