@@ -1,1 +1,42 @@
-[]
+[
+  {
+    "Nombre": "Venta: (601) 746 8001",
+    "Precio Normal": "$20.000",
+    "Precio Oferta": "$30.000",
+    "Descuento": "Oferta",
+    "Enlace Directo": "https://www.alkosto.com/",
+    "Imagen": "https://via.placeholder.com/200?text=Alkosto",
+    "Almacen": "Alkosto",
+    "Categoria": "Celulares"
+  },
+  {
+    "Nombre": "Electrodomésticos",
+    "Precio Normal": "$20.000",
+    "Precio Oferta": "$30.000",
+    "Descuento": "Oferta",
+    "Enlace Directo": "https://www.alkosto.com/celulares/c/BI_CELU_ALKOS",
+    "Imagen": "https://via.placeholder.com/200?text=Alkosto",
+    "Almacen": "Alkosto",
+    "Categoria": "Celulares"
+  },
+  {
+    "Nombre": "Ver todo en televisores",
+    "Precio Normal": "$20.000",
+    "Precio Oferta": "$30.000",
+    "Descuento": "Oferta",
+    "Enlace Directo": "https://www.alkosto.com/tv-video/televisores/c/BI_120_ALKOS",
+    "Imagen": "https://via.placeholder.com/200?text=Alkosto",
+    "Almacen": "Alkosto",
+    "Categoria": "Celulares"
+  },
+  {
+    "Nombre": "Netflix y Pines",
+    "Precio Normal": "$20.000",
+    "Precio Oferta": "$30.000",
+    "Descuento": "Oferta",
+    "Enlace Directo": "https://www.alkosto.com/pines/c/BI_PINE_ALKOS",
+    "Imagen": "https://via.placeholder.com/200?text=Alkosto",
+    "Almacen": "Alkosto",
+    "Categoria": "Celulares"
+  }
+]
