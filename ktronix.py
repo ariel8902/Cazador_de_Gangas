@@ -5,8 +5,8 @@ from bs4 import BeautifulSoup
 
 def extraer_ktronix(page):
     """
-    Extrae ofertas de Ktronix buscando contenedores reales de productos
-    y manejando la estructura nativa del comercio.
+    Extrae ofertas de Ktronix con protección anti-bloqueo (User-Agent real,
+    encabezados de navegador y pausas aleatorias humanas).
     """
     ofertas = []
     
@@ -16,13 +16,28 @@ def extraer_ktronix(page):
         ("Celulares", "https://www.ktronix.com/celulares/c/BI_FE_101")
     ]
 
+    try:
+        page.set_extra_http_headers({
+            "Accept-Language": "es-CO,es;q=0.9,en;q=0.8",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        })
+    except Exception:
+        pass
+
     for cat_nombre, url in categorias_urls:
         try:
-            page.goto(url, wait_until="networkidle", timeout=60000)
+            time.sleep(random.uniform(2.0, 4.0))
+            
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
             
             for i in range(4):
-                page.evaluate(f"window.scrollTo(0, {(i + 1) * 700});")
-                time.sleep(1.5)
+                posicion = (i + 1) * random.randint(650, 850)
+                page.evaluate(f"window.scrollTo({{top: {posicion}, behavior: 'smooth'}});")
+                time.sleep(random.uniform(1.2, 2.2))
 
             content = page.content()
             soup = BeautifulSoup(content, "html.parser")
@@ -97,8 +112,6 @@ def extraer_ktronix(page):
 
                 except Exception:
                     continue
-            
-            time.sleep(2)
 
         except Exception as e:
             print(f"Error en {cat_nombre} (Ktronix): {str(e)}")
