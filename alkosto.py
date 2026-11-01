@@ -2,12 +2,17 @@ import time
 from bs4 import BeautifulSoup
 
 def extraer_alkosto(page):
+    """
+    Extrae ofertas de Alkosto filtrando etiquetas publicitarias y capturando
+    únicamente productos reales con sus precios y fotos válidas.
+    """
     ofertas = []
     url_alkosto = "https://www.alkosto.com/ofertas"
     
     try:
         page.goto(url_alkosto, wait_until="domcontentloaded", timeout=60000)
         
+        # Scroll para activar carga perezosa de productos
         for i in range(4):
             page.evaluate(f"window.scrollTo(0, {i * 800});")
             time.sleep(1)
@@ -15,23 +20,36 @@ def extraer_alkosto(page):
         content = page.content()
         soup = BeautifulSoup(content, "html.parser")
         
+        # Buscar contenedores de productos reales en Alkosto
         productos = soup.find_all("li", class_=lambda x: x and "product" in x.lower()) or soup.find_all("div", class_=lambda x: x and "item" in x.lower())
 
         for prod in productos:
             try:
+                # 1. Nombre
                 nombre_elem = prod.find(["h2", "h3", "a"], class_=lambda x: x and ("name" in x.lower() or "title" in x.lower()))
                 nombre = nombre_elem.get_text(strip=True) if nombre_elem else None
 
+                # Descartar anuncios que no correspondan a nombres de productos
+                if not nombre or "paga a cuotas" in nombre.lower():
+                    continue
+
+                # 2. Enlace
                 link_elem = prod.find("a", href=True)
                 enlace = f"https://www.alkosto.com{link_elem['href']}" if link_elem and link_elem['href'].startswith("/") else (link_elem['href'] if link_elem else None)
 
-                img_elem = prod.find("img")
+                # 3. Imagen Real (descartando banners de cuotas o tarjetas)
                 imagen_url = None
-                if img_elem:
-                    imagen_url = img_elem.get("src") or img_elem.get("data-src") or img_elem.get("srcset")
-                    if imagen_url and imagen_url.startswith("//"):
-                        imagen_url = "https:" + imagen_url
+                imgs = prod.find_all("img")
+                for img in imgs:
+                    src_candidate = img.get("src") or img.get("data-src") or img.get("srcset")
+                    if src_candidate and "banner" not in src_candidate.lower() and "cuotas" not in src_candidate.lower():
+                        imagen_url = src_candidate
+                        break
+                
+                if imagen_url and imagen_url.startswith("//"):
+                    imagen_url = "https:" + imagen_url
 
+                # 4. Precios
                 precios = prod.find_all(["span", "div"], class_=lambda x: x and "price" in x.lower())
                 precio_normal = "N/A"
                 precio_oferta = "N/A"
@@ -42,6 +60,7 @@ def extraer_alkosto(page):
                 elif len(precios) == 1:
                     precio_oferta = precios[0].get_text(strip=True)
 
+                # 5. Descuento
                 descuento = "Oferta"
                 desc_elem = prod.find(["span", "div"], class_=lambda x: x and "discount" in x.lower())
                 if desc_elem:
