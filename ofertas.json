@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "Nombre": "Televisores",
+    "Precio Normal": "$20.000",
+    "Precio Oferta": "$30.000",
+    "Descuento": "Oferta",
+    "Enlace Directo": "https://www.alkosto.com/tv-video/televisores/c/BI_120_ALKOS",
+    "Imagen": "https://via.placeholder.com/200?text=Alkosto",
+    "Almacen": "Alkosto",
+    "Categoria": "Celulares"
+  }
+]
