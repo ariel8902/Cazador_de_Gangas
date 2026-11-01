@@ -9,7 +9,7 @@ def extraer_alkosto(page):
     url_alkosto = "https://www.alkosto.com/ofertas"
     
     try:
-        page.goto(url_alkosto, wait_until="networkidle", timeout=60000)
+        page.goto(url_alkosto, wait_until="domcontentloaded", timeout=60000)
         
         # Desplazamiento forzado para activar la carga perezosa de imágenes (lazy loading)
         for i in range(5):
