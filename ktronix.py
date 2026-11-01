@@ -5,31 +5,19 @@ from bs4 import BeautifulSoup
 
 def extraer_ktronix(page):
     """
-    Extrae ofertas de Ktronix con la misma estrategia de categorías de Éxito
-    y pausas aleatorias anti-bloqueo.
+    Extrae ofertas reales de Ktronix capturando la grilla validada de productos.
     """
     ofertas = []
-    
     categorias_urls = [
         ("Tecnología", "https://www.ktronix.com/tecnologia/c/BI_FE_104"),
         ("Electrodomésticos", "https://www.ktronix.com/electrodomesticos/c/BI_FE_105"),
         ("Celulares", "https://www.ktronix.com/celulares/c/BI_FE_101")
     ]
 
-    # Inyección de User-Agent e idioma real para evitar bloqueo 403/Akamai
-    try:
-        page.set_extra_http_headers({
-            "Accept-Language": "es-CO,es;q=0.9,en;q=0.8",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        })
-    except Exception:
-        pass
-
     for cat_nombre, url in categorias_urls:
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
             
-            # Scroll forzado para activar la grilla (mismo patrón que Éxito)
             for i in range(4):
                 page.evaluate(f"window.scrollTo(0, {i * 800});")
                 time.sleep(1)
@@ -37,45 +25,44 @@ def extraer_ktronix(page):
             content = page.content()
             soup = BeautifulSoup(content, "html.parser")
             
-            # Selectores amplios de tarjetas de producto en Ktronix
             productos = (
                 soup.find_all("form", class_=lambda x: x and "product" in x.lower()) or
                 soup.find_all("li", class_=lambda x: x and ("product" in x.lower() or "item" in x.lower())) or
-                soup.find_all("div", class_=lambda x: x and "product-item" in x.lower())
+                soup.find_all("div", class_=lambda x: x and "product" in x.lower())
             )
 
             for prod in productos:
                 try:
-                    nombre_elem = prod.find(["h2", "h3", "a", "span"], class_=lambda x: x and ("name" in x.lower() or "title" in x.lower()))
-                    nombre = nombre_elem.get_text(strip=True) if nombre_elem else None
+                    nombre = None
+                    for tag in prod.find_all(["h2", "h3", "a", "span"]):
+                        txt = tag.get_text(strip=True)
+                        if txt and len(txt) > 8 and not any(bad in txt.lower() for bad in ["cuotas", "interés", "envío gratis"]):
+                            nombre = txt
+                            break
 
-                    if not nombre or len(nombre) < 6 or any(term in nombre.lower() for term in ["paga a cuotas", "0% interés", "cuotas sin interés"]):
+                    if not nombre:
                         continue
 
                     link_elem = prod.find("a", href=True)
-                    enlace = f"https://www.ktronix.com{link_elem['href']}" if link_elem and link_elem['href'].startswith("/") else (link_elem['href'] if link_elem else None)
+                    if not link_elem:
+                        continue
+                    href = link_elem['href']
+                    enlace = f"https://www.ktronix.com{href}" if href.startswith("/") else href
 
                     imagen_url = None
                     imgs = prod.find_all("img")
                     for img in imgs:
                         src = img.get("src") or img.get("data-src") or img.get("srcset")
-                        if src and not any(bad in src.lower() for bad in ["banner", "cuotas", "logo", "flag", "svg"]):
+                        if src and not any(bad in src.lower() for bad in ["banner", "logo", "svg", "icon"]):
                             imagen_url = src.split(",")[0].split()[0]
                             break
                     
                     if imagen_url and imagen_url.startswith("//"):
                         imagen_url = "https:" + imagen_url
 
-                    precios = prod.find_all(["span", "div", "p"], class_=lambda x: x and "price" in x.lower())
-                    precio_normal = "N/A"
-                    precio_oferta = "N/A"
-                    
-                    textos_precio = [p.get_text(strip=True) for p in precios if "$" in p.get_text()]
-                    if len(textos_precio) >= 2:
-                        precio_normal = textos_precio[0]
-                        precio_oferta = textos_precio[1]
-                    elif len(textos_precio) == 1:
-                        precio_oferta = textos_precio[0]
+                    textos = [elem.get_text(strip=True) for elem in prod.find_all(text=re.compile(r'\$\s*[\d\.\,]+'))]
+                    precio_normal = textos[0] if len(textos) >= 2 else "N/A"
+                    precio_oferta = textos[1] if len(textos) >= 2 else (textos[0] if len(textos) == 1 else "N/A")
 
                     descuento = "Oferta"
                     desc_match = prod.find(text=re.compile(r'-\d+%|\d+%\s*OFF|\d+%', re.IGNORECASE))
@@ -83,28 +70,22 @@ def extraer_ktronix(page):
                         match = re.search(r'(\d+%)', desc_match)
                         if match:
                             descuento = f"-{match.group(1)}"
-                    else:
-                        tag_desc = prod.find(["span", "div"], class_=lambda x: x and ("discount" in x.lower() or "badge" in x.lower() or "flag" in x.lower()))
-                        if tag_desc:
-                            descuento = tag_desc.get_text(strip=True)
 
-                    if nombre and enlace:
-                        ofertas.append({
-                            "Nombre": nombre,
-                            "Precio Normal": precio_normal,
-                            "Precio Oferta": precio_oferta,
-                            "Descuento": descuento,
-                            "Enlace Directo": enlace,
-                            "Imagen": imagen_url or "https://via.placeholder.com/200?text=Ktronix+Oferta",
-                            "Almacen": "Ktronix",
-                            "Categoria": cat_nombre
-                        })
+                    ofertas.append({
+                        "Nombre": nombre,
+                        "Precio Normal": precio_normal,
+                        "Precio Oferta": precio_oferta,
+                        "Descuento": descuento,
+                        "Enlace Directo": enlace,
+                        "Imagen": imagen_url or "https://via.placeholder.com/200?text=Ktronix+Oferta",
+                        "Almacen": "Ktronix",
+                        "Categoria": cat_nombre
+                    })
 
                 except Exception:
                     continue
 
-            # Pausa de seguridad idéntica a la de Éxito
-            time.sleep(random.uniform(3.0, 5.0))
+            time.sleep(random.uniform(2.0, 4.0))
 
         except Exception as e:
             print(f"Error extrayendo {cat_nombre} en Ktronix: {str(e)}")
