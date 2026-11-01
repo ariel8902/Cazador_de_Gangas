@@ -1,84 +1,210 @@
-import time
-from bs4 import BeautifulSoup
+import os
+import json
+import re
+import streamlit as st
+import pandas as pd
 
-def extraer_ktronix(page):
-    """
-    Extrae ofertas del almacén Ktronix incluyendo la captura de la imagen original
-    y la etiqueta formal del almacén para el filtro de la vitrina.
-    """
-    ofertas = []
-    url_ktronix = "https://www.ktronix.com/ofertas"
+# ==========================================
+# CONFIGURACIÓN DE PÁGINA
+# ==========================================
+st.set_page_config(
+    page_title="Cazador de Gangas",
+    page_icon="🔥",
+    layout="wide"
+)
+
+STATS_FILE = "metricas.json"
+
+def cargar_metricas():
+    if os.path.exists(STATS_FILE):
+        try:
+            with open(STATS_FILE, "r") as f:
+                return json.load(f)
+        except:
+            pass
+    return {"visitas": 0, "clics_ofertas": 0}
+
+def guardar_metricas(data):
+    with open(STATS_FILE, "w") as f:
+        json.dump(data, f)
+
+stats = cargar_metricas()
+if "visita_registrada" not in st.session_state:
+    stats["visitas"] += 1
+    guardar_metricas(stats)
+    st.session_state["visita_registrada"] = True
+
+# Estilos CSS
+st.markdown("""
+    <style>
+    .card-producto {
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 15px;
+        margin-bottom: 20px;
+        background-color: #ffffff;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+        color: #333333;
+        text-align: center;
+    }
+    .badge-descuento {
+        background-color: #d32f2f;
+        color: white;
+        padding: 5px 10px;
+        border-radius: 6px;
+        font-weight: bold;
+        font-size: 15px;
+    }
+    .precio-normal {
+        text-decoration: line-through;
+        color: #888888;
+        font-size: 13px;
+    }
+    .precio-oferta {
+        color: #2e7d32;
+        font-size: 19px;
+        font-weight: bold;
+    }
+    .btn-comprar {
+        display: inline-block;
+        background-color: #d32f2f;
+        color: white !important;
+        padding: 9px 16px;
+        border-radius: 6px;
+        text-decoration: none;
+        font-weight: bold;
+        margin-top: 10px;
+        width: 100%;
+    }
+    .banner-publicidad {
+        border: 2px dashed #bbbbbb;
+        background-color: #f5f5f5;
+        border-radius: 8px;
+        padding: 15px;
+        text-align: center;
+        color: #555555;
+        margin: 15px 0;
+        font-size: 13px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+def cargar_ofertas_guardadas():
+    if os.path.exists("ofertas.json"):
+        with open("ofertas.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+def obtener_porcentaje_num(texto_descuento):
+    numeros = re.findall(r'\d+', str(texto_descuento))
+    if numeros:
+        return int(numeros[0])
+    return 0
+
+# ==========================================
+# BARRA LATERAL (CONTROLES Y AUDITORÍA)
+# ==========================================
+st.sidebar.title("🔥 Cazador de Gangas")
+st.sidebar.caption("Descuentos reales en Colombia")
+
+modo_vista = st.sidebar.radio("Vista de navegación:", ["Catálogo Comercial 🛍️", "Tabla de Control 📊"])
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("⚙️ Filtros de Búsqueda")
+
+# Filtro de porcentaje ajustado por defecto a 30% para mayor cobertura
+desc_minimo = st.sidebar.slider("Descuento Mínimo (%):", min_value=10, max_value=80, value=30, step=5)
+
+lista_almacenes = ["Todos los Almacenes", "Éxito", "Alkosto", "Ktronix"]
+lista_categorias = ["Todas las Categorías", "Tecnología", "Electrodomésticos", "Celulares"]
+
+cat_seleccionada = st.sidebar.selectbox("Seleccionar Categoría:", lista_categorias)
+alm_seleccionado = st.sidebar.selectbox("Seleccionar Almacén:", lista_almacenes)
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("📈 Auditoría de Tráfico")
+st.sidebar.metric("Visitas Totales", stats["visitas"])
+st.sidebar.metric("Clics en Ofertas", stats["clics_ofertas"])
+
+# ==========================================
+# PANEL PRINCIPAL
+# ==========================================
+st.title("🔥 Las Mejores Gangas de Colombia")
+st.write("Verificamos y filtramos las ofertas del mercado.")
+
+st.markdown("""
+    <div class="banner-publicidad">
+        📢 <b>Espacio Publicitario Destacado</b> (Banner AdSense / Impresiones Monetizadas)
+    </div>
+""", unsafe_allow_html=True)
+
+todas_ofertas = cargar_ofertas_guardadas()
+
+ofertas_filtradas = []
+for prod in todas_ofertas:
+    pct = obtener_porcentaje_num(prod.get("Descuento", "0"))
+    cat_prod = str(prod.get("Categoria", "General")).lower()
+    alm_prod = str(prod.get("Almacen", "General")).lower()
     
-    try:
-        # Carga rápida utilizando domcontentloaded para evitar tiempos de espera agotados
-        page.goto(url_ktronix, wait_until="domcontentloaded", timeout=60000)
+    cumple_descuento = pct >= desc_minimo
+    
+    if alm_seleccionado == "Todos los Almacenes":
+        cumple_almacen = True
+    else:
+        cumple_almacen = alm_seleccionado.lower() in alm_prod or alm_prod in alm_seleccionado.lower()
         
-        # Desplazamiento forzado para activar la carga perezosa de imágenes
-        for i in range(4):
-            page.evaluate(f"window.scrollTo(0, {i * 800});")
-            time.sleep(1)
+    if cat_seleccionada == "Todas las Categorías":
+        cumple_categoria = True
+    else:
+        cumple_categoria = cat_seleccionada.lower() in cat_prod or cat_prod in cat_seleccionada.lower()
+    
+    if cumple_descuento and cumple_categoria and cumple_almacen:
+        ofertas_filtradas.append(prod)
 
-        content = page.content()
-        soup = BeautifulSoup(content, "html.parser")
+if ofertas_filtradas:
+    if modo_vista == "Catálogo Comercial 🛍️":
+        st.subheader(f"🛍️ Vitrina de Gangas ({len(ofertas_filtradas)} productos encontrados)")
         
-        # Buscar contenedores de productos en Ktronix
-        productos = soup.find_all("li", class_=lambda x: x and "product" in x.lower()) or soup.find_all("div", class_=lambda x: x and "item" in x.lower())
+        cols = st.columns(3)
+        for idx, prod in enumerate(ofertas_filtradas):
+            col = cols[idx % 3]
+            with col:
+                titulo = prod.get("Nombre", "Producto en oferta")
+                precio_norm = prod.get("Precio Normal", "N/A")
+                precio_ofe = prod.get("Precio Oferta", "N/A")
+                descuento = prod.get("Descuento", "Oferta")
+                enlace = prod.get("Enlace Directo", "#")
+                imagen = prod.get("Imagen", "https://via.placeholder.com/200?text=Sin+Imagen")
+                almacen_nombre = prod.get("Almacen", "Tienda")
 
-        for prod in productos:
-            try:
-                # 1. Nombre del producto
-                nombre_elem = prod.find(["h2", "h3", "a"], class_=lambda x: x and ("name" in x.lower() or "title" in x.lower()))
-                nombre = nombre_elem.get_text(strip=True) if nombre_elem else None
+                st.markdown(f"""
+                    <div class="card-producto">
+                        <img src="{imagen}" style="max-width: 100%; height: 180px; object-fit: contain; margin-bottom: 10px;">
+                        <span class="badge-descuento">-{descuento}</span>
+                        <h4 style="font-size: 14px; margin: 10px 0; height: 38px; overflow: hidden;">{titulo}</h4>
+                        <p style="font-size: 11px; color: #666; margin-bottom: 5px;">📍 {almacen_nombre}</p>
+                        <p class="precio-normal">Antes: {precio_norm}</p>
+                        <p class="precio-oferta">Ahora: {precio_ofe}</p>
+                        <a href="{enlace}" target="_blank" class="btn-comprar">Ver Ganga en la Tienda ➔</a>
+                    </div>
+                """, unsafe_allow_html=True)
 
-                # 2. Enlace directo a la oferta
-                link_elem = prod.find("a", href=True)
-                enlace = f"https://www.ktronix.com{link_elem['href']}" if link_elem and link_elem['href'].startswith("/") else (link_elem['href'] if link_elem else None)
+            if (idx + 1) % 6 == 0 and (idx + 1) < len(ofertas_filtradas):
+                st.markdown("""
+                    <div class="banner-publicidad">
+                        💵 <b>Bloque Publicitario Intercalado</b> (Monetización por Clic/Vista)
+                    </div>
+                """, unsafe_allow_html=True)
 
-                # 3. Imagen real del producto
-                img_elem = prod.find("img")
-                imagen_url = None
-                if img_elem:
-                    imagen_url = (
-                        img_elem.get("src") or 
-                        img_elem.get("data-src") or 
-                        img_elem.get("srcset")
-                    )
-                    if imagen_url and imagen_url.startswith("//"):
-                        imagen_url = "https:" + imagen_url
-
-                # 4. Extracción de precios (Normal y Oferta)
-                precios = prod.find_all(["span", "div"], class_=lambda x: x and "price" in x.lower())
-                precio_normal = "N/A"
-                precio_oferta = "N/A"
-                
-                if len(precios) >= 2:
-                    precio_normal = precios[0].get_text(strip=True)
-                    precio_oferta = precios[1].get_text(strip=True)
-                elif len(precios) == 1:
-                    precio_oferta = precios[0].get_text(strip=True)
-
-                # 5. Etiqueta de Porcentaje de Descuento
-                descuento = "Oferta"
-                desc_elem = prod.find(["span", "div"], class_=lambda x: x and "discount" in x.lower())
-                if desc_elem:
-                    descuento = desc_elem.get_text(strip=True)
-
-                if nombre and enlace:
-                    ofertas.append({
-                        "Nombre": nombre,
-                        "Precio Normal": precio_normal,
-                        "Precio Oferta": precio_oferta,
-                        "Descuento": descuento,
-                        "Enlace Directo": enlace,
-                        "Imagen": imagen_url or "https://via.placeholder.com/200?text=Ktronix+Oferta",
-                        "Almacen": "Ktronix",
-                        "Categoria": "Tecnología"
-                    })
-
-            except Exception:
-                continue
-
-    except Exception as e:
-        print(f"Error en extracción de Ktronix: {str(e)}")
-
-    return ofertas
+    else:
+        st.subheader("📊 Tabla Interna de Control")
+        df = pd.DataFrame(ofertas_filtradas)
+        st.dataframe(
+            df,
+            column_config={
+                "Enlace Directo": st.column_config.LinkColumn("Enlace de Compra", display_text="Abrir Oferta 🔗")
+            },
+            use_container_width=True
+        )
+else:
+    st.info(f"No hay ofertas cargadas con descuento ≥ {desc_minimo}%. Intente bajar el porcentaje en la barra lateral.")
