@@ -4,8 +4,8 @@ from bs4 import BeautifulSoup
 
 def extraer_alkosto(page):
     """
-    Prueba directa en Alkosto mediante Playwright.
-    Filtra estrictamente productos descartando menús o enlaces inválidos.
+    Prueba metódica sobre los 188 contenedores confirmados en Alkosto.
+    Flexibiliza la captura de título y precio.
     """
     ofertas = []
     url_prueba = "https://www.alkosto.com/celulares/c/BI_FE_101"
@@ -14,7 +14,6 @@ def extraer_alkosto(page):
         print(f"\n--- [DIAGNÓSTICO ALKOSTO NAV] Conectando a: {url_prueba} ---")
         page.goto(url_prueba, wait_until="domcontentloaded", timeout=60000)
         
-        # Scroll escalonado idéntico al de Éxito
         for i in range(4):
             page.evaluate(f"window.scrollTo(0, {i * 700});")
             time.sleep(1)
@@ -22,7 +21,6 @@ def extraer_alkosto(page):
         content = page.content()
         soup = BeautifulSoup(content, "html.parser")
         
-        # Recorrido de contenedores generales
         productos = (
             soup.find_all("form", class_=lambda x: x and "product" in x.lower()) or
             soup.find_all("li", class_=lambda x: x and ("product" in x.lower() or "item" in x.lower())) or
@@ -39,15 +37,18 @@ def extraer_alkosto(page):
 
         for prod in productos:
             try:
-                # Extracción de título
-                nombre_elem = prod.find(["h2", "h3", "a", "span"], class_=lambda x: x and ("name" in x.lower() or "title" in x.lower()))
-                nombre = nombre_elem.get_text(strip=True) if nombre_elem else None
+                # 1. Extracción ultra-flexible de título (busca en cualquier H2, H3, A o SPAN con texto representativo)
+                nombre = None
+                for tag in prod.find_all(["h2", "h3", "h4", "a", "span"]):
+                    txt = tag.get_text(strip=True)
+                    if txt and len(txt) > 8 and not any(bad in txt.lower() for bad in palabras_invalidas):
+                        nombre = txt
+                        break
 
-                # Filtro de seguridad contra menús
-                if not nombre or len(nombre) < 6 or any(bad in nombre.lower() for bad in palabras_invalidas):
+                if not nombre:
                     continue
 
-                # Extracción de enlace de producto (debe terminar en /p/ o contener producto)
+                # 2. Extracción de enlace
                 link_elem = prod.find("a", href=True)
                 if not link_elem:
                     continue
@@ -55,23 +56,17 @@ def extraer_alkosto(page):
                 href = link_elem['href']
                 enlace = f"https://www.alkosto.com{href}" if href.startswith("/") else href
 
-                # Precios
-                precios = prod.find_all(["span", "div", "p"], class_=lambda x: x and "price" in x.lower())
-                textos_precio = [p.get_text(strip=True) for p in precios if "$" in p.get_text()]
+                # 3. Precios
+                textos_precio = [elem.get_text(strip=True) for elem in prod.find_all(text=re.compile(r'\$\s*[\d\.\,]+'))]
 
-                precio_normal = "N/A"
-                precio_oferta = "N/A"
-                if len(textos_precio) >= 2:
-                    precio_normal = textos_precio[0]
-                    precio_oferta = textos_precio[1]
-                elif len(textos_precio) == 1:
-                    precio_oferta = textos_precio[0]
+                precio_normal = textos_precio[0] if len(textos_precio) >= 2 else "N/A"
+                precio_oferta = textos_precio[1] if len(textos_precio) >= 2 else (textos_precio[0] if len(textos_precio) == 1 else "N/A")
 
-                # Imprimir los 3 primeros en la consola para validar
+                # Imprimir las primeras 3 muestras capturadas exitosamente
                 if muestras < 3:
-                    print(f"\n[HALLAZGO NAV {muestras + 1}]")
+                    print(f"\n[HALLAZGO CAPTURADO {muestras + 1}]")
                     print(f" -> Nombre: {nombre}")
-                    print(f" -> Precio Oferta: {precio_oferta}")
+                    print(f" -> Precios hallados: {textos_precio}")
                     print(f" -> Enlace: {enlace[:60]}...")
                     muestras += 1
 
