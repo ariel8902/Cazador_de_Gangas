@@ -1,10 +1,11 @@
 import time
+import re
 from bs4 import BeautifulSoup
 
 def extraer_alkosto(page):
     """
-    Script de diagnóstico quirúrgico para Alkosto.
-    Imprime en consola los elementos detectados antes de procesar la lista.
+    Script de diagnóstico metódico para Alkosto.
+    Captura tarjetas de la grilla principal descartando menús de usuario.
     """
     ofertas = []
     url_prueba = "https://www.alkosto.com/celulares/c/BI_FE_101"
@@ -13,43 +14,59 @@ def extraer_alkosto(page):
         print(f"\n--- [DIAGNÓSTICO ALKOSTO] Conectando a: {url_prueba} ---")
         page.goto(url_prueba, wait_until="domcontentloaded", timeout=60000)
         
-        # Scroll gradual para asegurar renderizado de grilla
-        for i in range(3):
+        # Scroll para desplegar la grilla
+        for i in range(4):
             page.evaluate(f"window.scrollTo(0, {(i + 1) * 700});")
             time.sleep(1.5)
 
         content = page.content()
         soup = BeautifulSoup(content, "html.parser")
         
-        # Búsqueda de contenedores nativos de productos en Alkosto
-        items = soup.select("li.product__item, form.product-item, div.product__item")
-        print(f"--- [DIAGNÓSTICO ALKOSTO] Contenedores de grilla encontrados: {len(items)} ---")
+        # Búsqueda amplia de contenedores reales en el cuerpo del sitio (evitando nav/header/footer)
+        cuerpo = soup.find("main") or soup.find("body")
+        items = []
+        if cuerpo:
+            items = (
+                cuerpo.find_all("form", class_=lambda x: x and "product" in x.lower()) or
+                cuerpo.find_all("div", class_=lambda x: x and "product" in x.lower()) or
+                cuerpo.find_all("li", class_=lambda x: x and "product" in x.lower())
+            )
+        
+        print(f"--- [DIAGNÓSTICO ALKOSTO] Candidatos en cuerpo principal: {len(items)} ---")
         
         muestras = 0
-        for item in items:
-            # 1. Extracción de Nombre
-            nombre_elem = item.select_one(".product__name, .name, h2, h3, a.js-product-click-name")
-            nombre = nombre_elem.get_text(strip=True) if nombre_elem else "SIN NOMBRE"
+        palabras_basura = ["mi cuenta", "mi perfil", "direcciones", "mis pedidos", "paga a cuotas", "0% interés", "favoritos", "servicio al cliente"]
 
-            # 2. Extracción de Enlace
+        for item in items:
+            # Extracción del título
+            nombre_elem = item.find(["h2", "h3", "h4", "a"], class_=lambda x: x and ("name" in x.lower() or "title" in x.lower()))
+            if not nombre_elem:
+                nombre_elem = item.find("a", href=True)
+            
+            nombre = nombre_elem.get_text(strip=True) if nombre_elem else None
+
+            # Descarte estricto de opciones de menú
+            if not nombre or len(nombre) < 8 or any(bad in nombre.lower() for bad in palabras_basura):
+                continue
+
+            # Extracción de enlace
             link_elem = item.find("a", href=True)
-            enlace = link_elem['href'] if link_elem else "SIN ENLACE"
-            if enlace.startswith("/"):
+            enlace = link_elem['href'] if link_elem else None
+            if enlace and enlace.startswith("/"):
                 enlace = "https://www.alkosto.com" + enlace
 
-            # 3. Extracción de Precios
-            precios = [p.get_text(strip=True) for p in item.find_all(text=lambda t: t and "$" in t)]
+            # Extracción de precios reales con $
+            precios = [p.get_text(strip=True) for p in item.find_all(text=re.compile(r'\$\s*[\d\.\,]+'))]
             
-            # Imprimir los primeros 3 hallazgos en el log para auditoría
+            # Imprimir hasta 3 hallazgos limpios en la consola de Actions
             if muestras < 3:
-                print(f"\n[MUESTRA {muestras + 1}]")
-                print(f" -> Nombre: {nombre}")
-                print(f" -> Precios en HTML: {precios}")
-                print(f" -> Enlace: {enlace[:60]}...")
+                print(f"\n[MUESTRA LIMPIA {muestras + 1}]")
+                print(f" -> Producto: {nombre}")
+                print(f" -> Precios: {precios}")
+                print(f" -> Enlace: {enlace[:60] if enlace else 'N/A'}...")
                 muestras += 1
 
-            # Si el elemento tiene nombre válido de producto y precio con $
-            if nombre != "SIN NOMBRE" and len(nombre) > 8 and precios:
+            if nombre and enlace and precios:
                 ofertas.append({
                     "Nombre": nombre,
                     "Precio Normal": precios[0] if len(precios) > 1 else "N/A",
@@ -64,5 +81,5 @@ def extraer_alkosto(page):
     except Exception as e:
         print(f"--- [DIAGNÓSTICO ALKOSTO] Error: {str(e)} ---")
 
-    print(f"\n--- [DIAGNÓSTICO ALKOSTO] Ofertas válidas filtradas: {len(ofertas)} ---\n")
+    print(f"--- [DIAGNÓSTICO ALKOSTO] Ofertas reales validadas: {len(ofertas)} ---\n")
     return ofertas
