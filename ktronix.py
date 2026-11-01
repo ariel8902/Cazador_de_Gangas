@@ -9,7 +9,7 @@ def extraer_ktronix(page):
     url_ktronix = "https://www.ktronix.com/ofertas"
     
     try:
-        page.goto(url_ktronix, wait_until="networkidle", timeout=60000)
+        page.goto(url_ktronix, wait_until="domcontentloaded", timeout=60000)
         
         # Desplazamiento forzado para activar la carga perezosa de imágenes (lazy loading)
         for i in range(5):
