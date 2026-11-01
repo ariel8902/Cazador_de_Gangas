@@ -1,112 +1,87 @@
 import time
 import random
-import re
 from bs4 import BeautifulSoup
 
 def extraer_alkosto(page):
     """
-    Extrae ofertas de Alkosto con la misma estrategia de categorías de Éxito
-    y pausas aleatorias anti-bloqueo.
+    Extractor de prueba para Alkosto usando exactamente la misma estructura de Éxito.
     """
     ofertas = []
+    url_alkosto = "https://www.alkosto.com/tecnologia/c/BI_FE_104"
     
-    categorias_urls = [
-        ("Tecnología", "https://www.alkosto.com/tecnologia/c/BI_FE_104"),
-        ("Electrodomésticos", "https://www.alkosto.com/electrodomesticos/c/BI_FE_105"),
-        ("Celulares", "https://www.alkosto.com/celulares/c/BI_FE_101")
-    ]
-
-    # Inyección de User-Agent e idioma real para evitar bloqueo 403/Akamai
     try:
-        page.set_extra_http_headers({
-            "Accept-Language": "es-CO,es;q=0.9,en;q=0.8",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        })
-    except Exception:
-        pass
+        print(f"--- Probando conexión a Alkosto: {url_alkosto} ---")
+        page.goto(url_alkosto, wait_until="domcontentloaded", timeout=60000)
+        
+        # Scroll calcado de Éxito
+        for i in range(4):
+            page.evaluate(f"window.scrollTo(0, {i * 800});")
+            time.sleep(1)
 
-    for cat_nombre, url in categorias_urls:
-        try:
-            page.goto(url, wait_until="domcontentloaded", timeout=60000)
-            
-            # Scroll forzado para activar la grilla (mismo patrón que Éxito)
-            for i in range(4):
-                page.evaluate(f"window.scrollTo(0, {i * 800});")
-                time.sleep(1)
+        content = page.content()
+        soup = BeautifulSoup(content, "html.parser")
+        
+        # Imprimir longitud del HTML para verificar si carga o si viene vacío por bloqueo
+        print(f"Tamaño del HTML recibido en Alkosto: {len(content)} caracteres")
+        
+        # Búsqueda amplia de contenedores
+        productos = (
+            soup.find_all("form", class_=lambda x: x and "product" in x.lower()) or
+            soup.find_all("li", class_=lambda x: x and ("product" in x.lower() or "item" in x.lower())) or
+            soup.find_all("div", class_=lambda x: x and "product" in x.lower())
+        )
+        
+        print(f"Elementos candidatos encontrados en Alkosto: {len(productos)}")
 
-            content = page.content()
-            soup = BeautifulSoup(content, "html.parser")
-            
-            # Selectores amplios de tarjetas de producto en Alkosto
-            productos = (
-                soup.find_all("form", class_=lambda x: x and "product" in x.lower()) or
-                soup.find_all("li", class_=lambda x: x and ("product" in x.lower() or "item" in x.lower())) or
-                soup.find_all("div", class_=lambda x: x and "product-item" in x.lower())
-            )
+        for prod in productos:
+            try:
+                nombre_elem = prod.find(["h2", "h3", "a", "span"], class_=lambda x: x and ("name" in x.lower() or "title" in x.lower()))
+                nombre = nombre_elem.get_text(strip=True) if nombre_elem else None
 
-            for prod in productos:
-                try:
-                    nombre_elem = prod.find(["h2", "h3", "a", "span"], class_=lambda x: x and ("name" in x.lower() or "title" in x.lower()))
-                    nombre = nombre_elem.get_text(strip=True) if nombre_elem else None
+                if not nombre or len(nombre) < 5 or "paga a cuotas" in nombre.lower():
+                    continue
 
-                    if not nombre or len(nombre) < 6 or any(term in nombre.lower() for term in ["paga a cuotas", "0% interés", "cuotas sin interés"]):
-                        continue
+                link_elem = prod.find("a", href=True)
+                enlace = f"https://www.alkosto.com{link_elem['href']}" if link_elem and link_elem['href'].startswith("/") else (link_elem['href'] if link_elem else None)
 
-                    link_elem = prod.find("a", href=True)
-                    enlace = f"https://www.alkosto.com{link_elem['href']}" if link_elem and link_elem['href'].startswith("/") else (link_elem['href'] if link_elem else None)
-
-                    imagen_url = None
-                    imgs = prod.find_all("img")
-                    for img in imgs:
-                        src = img.get("src") or img.get("data-src") or img.get("srcset")
-                        if src and not any(bad in src.lower() for bad in ["banner", "cuotas", "logo", "flag", "svg"]):
-                            imagen_url = src.split(",")[0].split()[0]
-                            break
-                    
+                img_elem = prod.find("img")
+                imagen_url = None
+                if img_elem:
+                    imagen_url = img_elem.get("src") or img_elem.get("data-src") or img_elem.get("srcset")
                     if imagen_url and imagen_url.startswith("//"):
                         imagen_url = "https:" + imagen_url
 
-                    precios = prod.find_all(["span", "div", "p"], class_=lambda x: x and "price" in x.lower())
-                    precio_normal = "N/A"
-                    precio_oferta = "N/A"
-                    
-                    textos_precio = [p.get_text(strip=True) for p in precios if "$" in p.get_text()]
-                    if len(textos_precio) >= 2:
-                        precio_normal = textos_precio[0]
-                        precio_oferta = textos_precio[1]
-                    elif len(textos_precio) == 1:
-                        precio_oferta = textos_precio[0]
+                precios = prod.find_all(["span", "div", "p"], class_=lambda x: x and "price" in x.lower())
+                precio_normal = "N/A"
+                precio_oferta = "N/A"
+                
+                if len(precios) >= 2:
+                    precio_normal = precios[0].get_text(strip=True)
+                    precio_oferta = precios[1].get_text(strip=True)
+                elif len(precios) == 1:
+                    precio_oferta = precios[0].get_text(strip=True)
 
-                    descuento = "Oferta"
-                    desc_match = prod.find(text=re.compile(r'-\d+%|\d+%\s*OFF|\d+%', re.IGNORECASE))
-                    if desc_match:
-                        match = re.search(r'(\d+%)', desc_match)
-                        if match:
-                            descuento = f"-{match.group(1)}"
-                    else:
-                        tag_desc = prod.find(["span", "div"], class_=lambda x: x and ("discount" in x.lower() or "badge" in x.lower() or "flag" in x.lower()))
-                        if tag_desc:
-                            descuento = tag_desc.get_text(strip=True)
+                descuento = "Oferta"
+                desc_elem = prod.find(["span", "div"], class_=lambda x: x and "discount" in x.lower())
+                if desc_elem:
+                    descuento = desc_elem.get_text(strip=True)
 
-                    if nombre and enlace:
-                        ofertas.append({
-                            "Nombre": nombre,
-                            "Precio Normal": precio_normal,
-                            "Precio Oferta": precio_oferta,
-                            "Descuento": descuento,
-                            "Enlace Directo": enlace,
-                            "Imagen": imagen_url or "https://via.placeholder.com/200?text=Alkosto+Oferta",
-                            "Almacen": "Alkosto",
-                            "Categoria": cat_nombre
-                        })
+                if nombre and enlace:
+                    ofertas.append({
+                        "Nombre": nombre,
+                        "Precio Normal": precio_normal,
+                        "Precio Oferta": precio_oferta,
+                        "Descuento": descuento,
+                        "Enlace Directo": enlace,
+                        "Imagen": imagen_url or "https://via.placeholder.com/200?text=Alkosto+Oferta",
+                        "Almacen": "Alkosto",
+                        "Categoria": "Tecnología"
+                    })
 
-                except Exception:
-                    continue
+            except Exception:
+                continue
 
-            # Pausa de seguridad idéntica a la de Éxito
-            time.sleep(random.uniform(3.0, 5.0))
-
-        except Exception as e:
-            print(f"Error extrayendo {cat_nombre} en Alkosto: {str(e)}")
+    except Exception as e:
+        print(f"Error crítico en prueba Alkosto: {str(e)}")
 
     return ofertas
