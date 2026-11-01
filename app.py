@@ -103,7 +103,7 @@ def obtener_porcentaje_num(texto_descuento):
     return 0
 
 # ==========================================
-# BARRA LATERAL (CONTROLES)
+# BARRA LATERAL (CONTROLES Y AUDITORÍA)
 # ==========================================
 st.sidebar.title("🔥 Cazador de Gangas")
 st.sidebar.caption("Descuentos reales superiores al 50%")
@@ -113,21 +113,14 @@ modo_vista = st.sidebar.radio("Vista de navegación:", ["Catálogo Comercial �
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚙️ Filtros de Búsqueda")
 
-# Filtro de Porcentaje Mínimo (Por defecto en 50%)
+# Filtro de Porcentaje Mínimo (Fijado por defecto en 50%)
 desc_minimo = st.sidebar.slider("Descuento Mínimo (%):", min_value=30, max_value=80, value=50, step=5)
 
-# Cargar datos para extraer categorías existentes
-todas_ofertas = cargar_ofertas_guardadas()
+# Listas fijas de almacenes y categorías para asegurar que siempre aparezcan todos las opciones
+lista_almacenes = ["Todos los Almacenes", "Éxito", "Alkosto", "Ktronix"]
+lista_categorias = ["Todas las Categorías", "Tecnología", "Electrodomésticos", "Celulares"]
 
-lista_categorias = ["Todas las Categorías"]
-lista_almacenes = ["Todos los Almacenes"]
-
-if todas_ofertas:
-    cats_unicas = sorted(list(set([prod.get("Categoria", "General") for prod in todas_ofertas])))
-    alms_unicos = sorted(list(set([prod.get("Almacen", "General") for prod in todas_ofertas])))
-    lista_categorias.extend(cats_unicas)
-    lista_almacenes.extend(alms_unicos)
-
+# Menús desplegables directos
 cat_seleccionada = st.sidebar.selectbox("Seleccionar Categoría:", lista_categorias)
 alm_seleccionado = st.sidebar.selectbox("Seleccionar Almacén:", lista_almacenes)
 
@@ -137,18 +130,21 @@ st.sidebar.metric("Visitas Totales", stats["visitas"])
 st.sidebar.metric("Clics en Ofertas", stats["clics_ofertas"])
 
 # ==========================================
-# PANEL PRINCIPAL
+# PANEL PRINCIPAL (VITRINA COMERCIAL)
 # ==========================================
 st.title("🔥 Las Mejores Gangas de Colombia (≥ 50% DCTO)")
 st.write("Verificamos y filtramos únicamente las rebajas más drásticas del mercado.")
 
+# Banner Publicitario Superior
 st.markdown("""
     <div class="banner-publicidad">
         📢 <b>Espacio Publicitario Destacado</b> (Banner AdSense / Impresiones Monetizadas)
     </div>
 """, unsafe_allow_html=True)
 
-# Aplicar filtros cruzados (Descuento >= 50% + Categoría + Almacén)
+todas_ofertas = cargar_ofertas_guardadas()
+
+# Filtrar ofertas cruzadas (Porcentaje >= 50% + Categoría + Almacén)
 ofertas_filtradas = []
 for prod in todas_ofertas:
     pct = obtener_porcentaje_num(prod.get("Descuento", "0"))
@@ -156,8 +152,8 @@ for prod in todas_ofertas:
     alm_prod = prod.get("Almacen", "General")
     
     cumple_descuento = pct >= desc_minimo
-    cumple_categoria = (cat_seleccionada == "Todas las Categorías") or (cat_prod == cat_seleccionada)
-    cumple_almacen = (alm_seleccionado == "Todos los Almacenes") or (alm_prod == alm_seleccionado)
+    cumple_categoria = (cat_seleccionada == "Todas las Categorías") or (cat_prod.lower() == cat_seleccionada.lower())
+    cumple_almacen = (alm_seleccionado == "Todos los Almacenes") or (alm_prod.lower() == alm_seleccionado.lower())
     
     if cumple_descuento and cumple_categoria and cumple_almacen:
         ofertas_filtradas.append(prod)
@@ -190,6 +186,7 @@ if ofertas_filtradas:
                     </div>
                 """, unsafe_allow_html=True)
 
+            # Insertar anuncio publicitario intercalado cada 6 productos
             if (idx + 1) % 6 == 0 and (idx + 1) < len(ofertas_filtradas):
                 st.markdown("""
                     <div class="banner-publicidad">
@@ -208,4 +205,4 @@ if ofertas_filtradas:
             use_container_width=True
         )
 else:
-    st.info(f"No hay productos que cumplan con la búsqueda seleccionada (≥ {desc_minimo}% descuento). Pruebe cambiando el filtro de categoría o almacén.")
+    st.info(f"No hay productos cargados que cumplan con los filtros seleccionados (≥ {desc_minimo}% descuento en {alm_seleccionado}). Pruebe cambiando los filtros del menú lateral.")
