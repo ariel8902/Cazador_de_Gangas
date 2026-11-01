@@ -16,7 +16,7 @@ def extraer_ktronix(page):
             page.evaluate(f"window.scrollTo(0, {i * 800});")
             time.sleep(1)
 
-0        content = page.content()
+        content = page.content()
         soup = BeautifulSoup(content, "html.parser")
         
         # Buscar contenedores de productos en Ktronix
