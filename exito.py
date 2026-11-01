@@ -1,46 +1,43 @@
-from bs4 import BeautifulSoup
 import time
+from bs4 import BeautifulSoup
 
 def extraer_exito(page, categoria, url_busqueda):
-    """
-    Extrae ofertas del almacén Éxito utilizando la instancia activa de Playwright.
-    Incluye la captura de la imagen original del producto.
-    """
     ofertas = []
     
     try:
-        page.goto(url_busqueda, wait_until="domcontentloaded", timeout=60000)
-        time.sleep(5)  # Tiempo para renderizado de imágenes dinámicas
+        page.goto(url_busqueda, wait_until="networkidle", timeout=60000)
         
-        # Desplazamiento suave para cargar imágenes en perezoso (lazy loading)
-        page.evaluate("window.scrollBy(0, 1500);")
-        time.sleep(2)
+        # Desplazamiento forzado para activar la carga de imágenes dinámicas
+        for i in range(5):
+            page.evaluate(f"window.scrollTo(0, {i * 800});")
+            time.sleep(1)
 
         content = page.content()
         soup = BeautifulSoup(content, "html.parser")
         
-        # Buscar contenedores de productos en el HTML de Éxito
         productos = soup.find_all("article") or soup.find_all("div", class_=lambda x: x and "product" in x.lower())
 
         for prod in productos:
             try:
-                # 1. Nombre del Producto
                 nombre_elem = prod.find(["h3", "h2", "span"], class_=lambda x: x and ("name" in x.lower() or "title" in x.lower()))
                 nombre = nombre_elem.get_text(strip=True) if nombre_elem else None
 
-                # 2. Enlace Directo
                 link_elem = prod.find("a", href=True)
                 enlace = f"https://www.exito.com{link_elem['href']}" if link_elem and link_elem['href'].startswith("/") else (link_elem['href'] if link_elem else None)
 
-                # 3. Imagen del Producto (Captura URL de foto real)
+                # Captura exhaustiva de etiquetas de imagen
                 img_elem = prod.find("img")
                 imagen_url = None
                 if img_elem:
-                    imagen_url = img_elem.get("src") or img_elem.get("data-src") or img_elem.get("srcset")
+                    imagen_url = (
+                        img_elem.get("src") or 
+                        img_elem.get("data-src") or 
+                        img_elem.get("data-srcset") or 
+                        img_elem.get("srcset")
+                    )
                     if imagen_url and imagen_url.startswith("//"):
                         imagen_url = "https:" + imagen_url
 
-                # 4. Precios y Descuentos
                 precios = prod.find_all(["span", "div"], class_=lambda x: x and "price" in x.lower())
                 precio_normal = "N/A"
                 precio_oferta = "N/A"
@@ -56,7 +53,6 @@ def extraer_exito(page, categoria, url_busqueda):
                 if desc_elem:
                     descuento = desc_elem.get_text(strip=True)
 
-                # Si se obtuvo al menos el nombre y el enlace, se añade la oferta
                 if nombre and enlace:
                     ofertas.append({
                         "Nombre": nombre,
@@ -64,7 +60,7 @@ def extraer_exito(page, categoria, url_busqueda):
                         "Precio Oferta": precio_oferta,
                         "Descuento": descuento,
                         "Enlace Directo": enlace,
-                        "Imagen": imagen_url or "https://via.placeholder.com/200?text=Exito+Oferta",
+                        "Imagen": imagen_url or "https://vtex.vtexassets.com/assets/portal/src/img/empty.png",
                         "Almacen": "Éxito",
                         "Categoria": categoria
                     })
