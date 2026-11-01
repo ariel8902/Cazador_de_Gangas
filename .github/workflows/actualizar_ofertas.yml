@@ -5,6 +5,9 @@ on:
     - cron: '0 5 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   actualizar:
     runs-on: ubuntu-latest
@@ -24,7 +27,7 @@ jobs:
         pip install -r requirements.txt
         playwright install chromium
 
-    - name: Ejecutar Extractor Protegido Nocturno
+    - name: Ejecutar Extractor Nocturno
       run: |
         python -c "
         from playwright.sync_api import sync_playwright
@@ -35,7 +38,6 @@ jobs:
 
         todas_ofertas = []
         with sync_playwright() as p:
-            # Configurar navegador simulando usuario real en Windows
             browser = p.chromium.launch(headless=True)
             context = browser.new_context(
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -43,19 +45,16 @@ jobs:
             )
             page = context.new_page()
             
-            # Éxito
             try:
                 todas_ofertas.extend(extraer_exito(page, 'Tecnología', 'https://www.exito.com/tecnologia'))
-                time.sleep(random.uniform(3.0, 6.0)) # Pausa prudente
+                time.sleep(random.uniform(2.0, 4.0))
             except Exception as e: print('Error Exito:', e)
             
-            # Alkosto
             try:
                 todas_ofertas.extend(extraer_alkosto(page))
-                time.sleep(random.uniform(3.0, 6.0)) # Pausa prudente
+                time.sleep(random.uniform(2.0, 4.0))
             except Exception as e: print('Error Alkosto:', e)
             
-            # Ktronix
             try:
                 todas_ofertas.extend(extraer_ktronix(page))
             except Exception as e: print('Error Ktronix:', e)
@@ -68,8 +67,8 @@ jobs:
 
     - name: Guardar Cambios en GitHub
       run: |
-        git config --global user.name 'Bot Cazador'
-        git config --global user.email 'bot@cazadordegangas.com'
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
         git add ofertas.json
-        git commit -m "🤖 Actualización automática segura de gangas" || exit 0
+        git commit -m "🤖 Actualización automática de gangas" || exit 0
         git push
