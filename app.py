@@ -2,10 +2,9 @@ import os
 import json
 import re
 import streamlit as st
-import pandas as pd
 
 # ==========================================
-# CONFIGURACIÓN DE PÁGINA
+# CONFIGURACIÓN PÁGINA Y ESTILOS
 # ==========================================
 st.set_page_config(
     page_title="Cazador de Gangas",
@@ -13,7 +12,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilos CSS
 st.markdown("""
     <style>
     .card-producto {
@@ -58,16 +56,15 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# LECTURA DIRECTA DE DISCO (SIN CACHÉ PARA EVITAR DATOS ESTÁTICOS)
-def cargar_ofertas_directo():
+# LECTURA DE DATOS DIRECTA SIN CACHÉ
+def cargar_ofertas():
     archivo = "ofertas.json"
     if os.path.exists(archivo):
         try:
             with open(archivo, "r", encoding="utf-8") as f:
-                datos = json.load(f)
-                return datos
-        except Exception as e:
-            st.error(f"Error leyendo {archivo}: {e}")
+                return json.load(f)
+        except Exception:
+            pass
     return []
 
 def obtener_porcentaje_num(texto_descuento):
@@ -78,30 +75,55 @@ def obtener_porcentaje_num(texto_descuento):
         return int(numeros[0])
     return 0
 
-# Cargar base de datos actual
-todas_ofertas = cargar_ofertas_directo()
+todas_ofertas = cargar_ofertas()
 
 # ==========================================
-# BARRA LATERAL (CONTROLES Y DIAGNÓSTICO)
+# MÉTRICAS Y SESIÓN
+# ==========================================
+if "visitas" not in st.session_state:
+    st.session_state["visitas"] = 1
+else:
+    st.session_state["visitas"] += 1
+
+if "clics" not in st.session_state:
+    st.session_state["clics"] = 0
+
+# Conteo por almacén normalizando tildes y minúsculas
+conteo_exito = 0
+conteo_alkosto = 0
+conteo_ktronix = 0
+
+for p in todas_ofertas:
+    alm = str(p.get("Almacen", "")).lower()
+    if "exito" in alm or "éxito" in alm:
+        conteo_exito += 1
+    elif "alkosto" in alm:
+        conteo_alkosto += 1
+    elif "ktronix" in alm:
+        conteo_ktronix += 1
+
+# ==========================================
+# BARRA LATERAL
 # ==========================================
 st.sidebar.title("🔥 Cazador de Gangas")
 
-# DIAGNÓSTICO EN TIEMPO REAL DEL ARCHIVO JSON
-conteo_exito = sum(1 for p in todas_ofertas if "exito" in str(p.get("Almacen", "")).lower())
-conteo_alkosto = sum(1 for p in todas_ofertas if "alkosto" in str(p.get("Almacen", "")).lower())
-conteo_ktronix = sum(1 for p in todas_ofertas if "ktronix" in str(p.get("Almacen", "")).lower())
+# Visualización de métricas
+col_v, col_c = st.sidebar.columns(2)
+col_v.metric("👁️ Visitas", st.session_state["visitas"])
+col_c.metric("🖱️ Clics", st.session_state["clics"])
 
+st.sidebar.markdown("---")
 st.sidebar.markdown("### 📊 Estado de Base de Datos")
 st.sidebar.info(f"**Total en JSON:** {len(todas_ofertas)}\n- **Éxito:** {conteo_exito}\n- **Alkosto:** {conteo_alkosto}\n- **Ktronix:** {conteo_ktronix}")
 
 st.sidebar.markdown("---")
-desc_minimo = st.sidebar.slider("Descuento Mínimo (%):", min_value=0, max_value=80, value=10, step=5)
+desc_minimo = st.sidebar.slider("Descuento Mínimo (%):", min_value=0, max_value=80, value=0, step=5)
 
 lista_almacenes = ["Todos los Almacenes", "Éxito", "Alkosto", "Ktronix"]
 alm_seleccionado = st.sidebar.selectbox("Seleccionar Almacén:", lista_almacenes)
 
 # ==========================================
-# FILTRADO Y DESPLIEGUE
+# VITRINA PRINCIPAL
 # ==========================================
 st.title("🔥 Vitrina Multitienda de Gangas")
 
@@ -110,13 +132,16 @@ for prod in todas_ofertas:
     pct = obtener_porcentaje_num(prod.get("Descuento", "0"))
     alm_prod = str(prod.get("Almacen", "")).strip().lower()
     
-    cumple_descuento = (pct >= desc_minimo)
+    cumple_descuento = (pct >= desc_minimo) if pct > 0 else (desc_minimo == 0)
     
     if alm_seleccionado == "Todos los Almacenes":
         cumple_almacen = True
     else:
         target = alm_seleccionado.strip().lower()
-        cumple_almacen = target in alm_prod
+        if target == "éxito":
+            cumple_almacen = "exito" in alm_prod or "éxito" in alm_prod
+        else:
+            cumple_almacen = target in alm_prod
 
     if cumple_descuento and cumple_almacen:
         ofertas_filtradas.append(prod)
