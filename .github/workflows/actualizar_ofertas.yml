@@ -2,9 +2,8 @@ name: Actualizador Nocturno de Gangas
 
 on:
   schedule:
-    # Se ejecuta automáticamente todos los días a las 12:00 AM hora Colombia (05:00 UTC)
     - cron: '0 5 * * *'
-  workflow_dispatch: # Permite probar la ejecución manual si lo desea
+  workflow_dispatch:
 
 jobs:
   actualizar:
@@ -25,28 +24,38 @@ jobs:
         pip install -r requirements.txt
         playwright install chromium
 
-    - name: Ejecutar Extractor Nocturno
+    - name: Ejecutar Extractor Protegido Nocturno
       run: |
         python -c "
         from playwright.sync_api import sync_playwright
-        import json
+        import json, time, random
         from exito import extraer_exito
         from alkosto import extraer_alkosto
         from ktronix import extraer_ktronix
 
         todas_ofertas = []
         with sync_playwright() as p:
+            # Configurar navegador simulando usuario real en Windows
             browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
+            context = browser.new_context(
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                viewport={'width': 1280, 'height': 720}
+            )
+            page = context.new_page()
             
+            # Éxito
             try:
                 todas_ofertas.extend(extraer_exito(page, 'Tecnología', 'https://www.exito.com/tecnologia'))
+                time.sleep(random.uniform(3.0, 6.0)) # Pausa prudente
             except Exception as e: print('Error Exito:', e)
             
+            # Alkosto
             try:
                 todas_ofertas.extend(extraer_alkosto(page))
+                time.sleep(random.uniform(3.0, 6.0)) # Pausa prudente
             except Exception as e: print('Error Alkosto:', e)
             
+            # Ktronix
             try:
                 todas_ofertas.extend(extraer_ktronix(page))
             except Exception as e: print('Error Ktronix:', e)
@@ -62,5 +71,5 @@ jobs:
         git config --global user.name 'Bot Cazador'
         git config --global user.email 'bot@cazadordegangas.com'
         git add ofertas.json
-        git commit -m "🤖 Actualización automática de gangas a medianoche" || exit 0
+        git commit -m "🤖 Actualización automática segura de gangas" || exit 0
         git push
