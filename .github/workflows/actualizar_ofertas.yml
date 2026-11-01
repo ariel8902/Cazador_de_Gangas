@@ -47,27 +47,36 @@ jobs:
             
             # 1. Éxito
             try:
-                print('Extrayendo Éxito...')
-                todas_ofertas.extend(extraer_exito(page))
+                print('--- Iniciando Éxito ---')
+                of_exito = extraer_exito(page)
+                print(f'Éxito aportó: {len(of_exito)} ofertas')
+                todas_ofertas.extend(of_exito)
                 time.sleep(random.uniform(2.0, 4.0))
-            except Exception as e: print('Error Exito:', e)
+            except Exception as e: 
+                print('Error crítico en Éxito:', e)
             
             # 2. Alkosto
             try:
-                print('Extrayendo Alkosto...')
-                todas_ofertas.extend(extraer_alkosto(page))
+                print('--- Iniciando Alkosto ---')
+                of_alkosto = extraer_alkosto(page)
+                print(f'Alkosto aportó: {len(of_alkosto)} ofertas')
+                todas_ofertas.extend(of_alkosto)
                 time.sleep(random.uniform(2.0, 4.0))
-            except Exception as e: print('Error Alkosto:', e)
+            except Exception as e: 
+                print('Error crítico en Alkosto:', e)
             
             # 3. Ktronix
             try:
-                print('Extrayendo Ktronix...')
-                todas_ofertas.extend(extraer_ktronix(page))
-            except Exception as e: print('Error Ktronix:', e)
+                print('--- Iniciando Ktronix ---')
+                of_ktronix = extraer_ktronix(page)
+                print(f'Ktronix aportó: {len(of_ktronix)} ofertas')
+                todas_ofertas.extend(of_ktronix)
+            except Exception as e: 
+                print('Error crítico en Ktronix:', e)
             
             browser.close()
 
-        print(f'Total ofertas recopiladas: {len(todas_ofertas)}')
+        print(f'TOTAL GENERAL GUARDADO: {len(todas_ofertas)} ofertas')
 
         with open('ofertas.json', 'w', encoding='utf-8') as f:
             json.dump(todas_ofertas, f, ensure_ascii=False, indent=2)
