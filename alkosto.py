@@ -4,79 +4,66 @@ from bs4 import BeautifulSoup
 
 def extraer_alkosto(page):
     """
-    Diagnóstico con exclusión estricta de enlaces de categoría (/c/) 
-    para capturar ÚNICAMENTE productos reales de Alkosto.
+    Extracción directa en Alkosto enfocada en las tarjetas reales de producto.
     """
     ofertas = []
     url_prueba = "https://www.alkosto.com/celulares/c/BI_FE_101"
     
     try:
-        print(f"\n--- [DIAGNÓSTICO ALKOSTO] Conectando a: {url_prueba} ---")
+        print(f"\n--- [DIAGNÓSTICO DEFINITIVO ALKOSTO] Conectando a: {url_prueba} ---")
         page.goto(url_prueba, wait_until="domcontentloaded", timeout=60000)
         
+        # Scroll gradual para cargar imágenes y precios
         for i in range(4):
-            page.evaluate(f"window.scrollTo(0, {i * 700});")
-            time.sleep(1)
+            page.evaluate(f"window.scrollTo(0, {(i + 1) * 700});")
+            time.sleep(1.5)
 
         content = page.content()
         soup = BeautifulSoup(content, "html.parser")
         
-        cuerpo = soup.find("main") or soup.find("body")
-        productos = []
-        if cuerpo:
-            productos = (
-                cuerpo.find_all("form", class_=lambda x: x and "product" in x.lower()) or
-                cuerpo.find_all("div", class_=lambda x: x and "product" in x.lower()) or
-                cuerpo.find_all("li")
-            )
+        # Selectores nativos de tarjetas de producto en Alkosto
+        tarjetas = (
+            soup.find_all("li", class_=lambda x: x and "product" in x.lower()) or
+            soup.find_all("div", class_=lambda x: x and "item" in x.lower() and "product" in x.lower()) or
+            soup.find_all("form", class_=lambda x: x and "product" in x.lower())
+        )
 
-        print(f"--- [DIAGNÓSTICO ALKOSTO] Elementos analizados en cuerpo: {len(productos)} ---")
+        print(f"--- [DIAGNÓSTICO DEFINITIVO] Tarjetas detectadas: {len(tarjetas)} ---")
 
         muestras = 0
-        palabras_basura = [
-            "televisores", "celulares", "electrodomésticos", "instalaciones", "servicio", 
-            "métodos de pago", "sigue tu pedido", "factura", "mi cuenta", "mi perfil", 
-            "direcciones", "mis pedidos", "atención al cliente", "carro de compras"
-        ]
+        palabras_basura = ["métodos de pago", "sigue tu pedido", "factura", "mi cuenta", "mi perfil", "servicio al cliente"]
 
-        for prod in productos:
+        for t in tarjetas:
             try:
-                # 1. Enlace directo (Descarte obligatorio de URLs de Categoría /c/)
-                link_elem = prod.find("a", href=True)
+                # 1. Título
+                tit_elem = t.find(["h2", "h3", "h4", "a"], class_=lambda x: x and ("name" in x.lower() or "title" in x.lower() or "heading" in x.lower()))
+                if not tit_elem:
+                    tit_elem = t.find("a", href=True)
+                
+                nombre = tit_elem.get_text(strip=True) if tit_elem else None
+                if not nombre or len(nombre) < 8 or any(b in nombre.lower() for b in palabras_basura):
+                    continue
+
+                # 2. Precios
+                precios = [p.get_text(strip=True) for p in t.find_all(text=re.compile(r'\$\s*[\d\.\,]+'))]
+                if not precios:
+                    continue  # Si la tarjeta no tiene precio con $, no es un producto real
+
+                precio_normal = precios[0] if len(precios) >= 2 else "N/A"
+                precio_oferta = precios[1] if len(precios) >= 2 else precios[0]
+
+                # 3. Enlace
+                link_elem = t.find("a", href=True)
                 if not link_elem:
                     continue
-                
                 href = link_elem['href']
-                
-                # REGLA CLAVE: Si la URL contiene /c/ es una categoría de navegación, NO un producto
-                if "/c/" in href.lower() or "c/BI_" in href:
-                    continue
-
                 enlace = f"https://www.alkosto.com{href}" if href.startswith("/") else href
 
-                # 2. Precios reales en $
-                textos_precio = [elem.get_text(strip=True) for elem in prod.find_all(text=re.compile(r'\$\s*[\d\.\,]+'))]
-                if not textos_precio:
-                    continue
-
-                precio_normal = textos_precio[0] if len(textos_precio) >= 2 else "N/A"
-                precio_oferta = textos_precio[1] if len(textos_precio) >= 2 else textos_precio[0]
-
-                # 3. Extracción de título
-                nombre = None
-                for tag in prod.find_all(["h2", "h3", "h4", "a", "span"]):
-                    txt = tag.get_text(strip=True)
-                    if txt and len(txt) > 10 and not any(bad in txt.lower() for bad in palabras_basura):
-                        nombre = txt
-                        break
-
-                if not nombre:
-                    continue
-
+                # Imprimir muestra limpia
                 if muestras < 3:
-                    print(f"\n[PRODUCTO FÍSICO REAL {muestras + 1}]")
-                    print(f" -> Nombre: {nombre}")
-                    print(f" -> Precio Oferta: {precio_oferta}")
+                    print(f"\n[PRODUCTO EXTRAÍDO {muestras + 1}]")
+                    print(f" -> Título: {nombre}")
+                    print(f" -> Oferta: {precio_oferta}")
                     print(f" -> Enlace: {enlace[:60]}...")
                     muestras += 1
 
@@ -95,7 +82,7 @@ def extraer_alkosto(page):
                 continue
 
     except Exception as e:
-        print(f"--- [DIAGNÓSTICO ALKOSTO] Error: {str(e)} ---")
+        print(f"--- [DIAGNÓSTICO DEFINITIVO] Error: {str(e)} ---")
 
-    print(f"\n--- [DIAGNÓSTICO ALKOSTO] Total Productos Físicos Reales: {len(ofertas)} ---\n")
+    print(f"\n--- [DIAGNÓSTICO DEFINITIVO] Total extraídos limpios: {len(ofertas)} ---\n")
     return ofertas
