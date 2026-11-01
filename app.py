@@ -25,8 +25,11 @@ def cargar_metricas():
     return {"visitas": 0, "clics_ofertas": 0}
 
 def guardar_metricas(data):
-    with open(STATS_FILE, "w") as f:
-        json.dump(data, f)
+    try:
+        with open(STATS_FILE, "w") as f:
+            json.dump(data, f)
+    except:
+        pass
 
 stats = cargar_metricas()
 if "visita_registrada" not in st.session_state:
@@ -91,11 +94,17 @@ st.markdown("""
 
 def cargar_ofertas_guardadas():
     if os.path.exists("ofertas.json"):
-        with open("ofertas.json", "r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open("ofertas.json", "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            st.error(f"Error al cargar ofertas.json: {e}")
     return []
 
 def obtener_porcentaje_num(texto_descuento):
+    if not texto_descuento:
+        return 0
+    # Extrae el primer número entero encontrado en el texto de descuento
     numeros = re.findall(r'\d+', str(texto_descuento))
     if numeros:
         return int(numeros[0])
@@ -112,7 +121,7 @@ modo_vista = st.sidebar.radio("Vista de navegación:", ["Catálogo Comercial �
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚙️ Filtros de Búsqueda")
 
-# Filtro de porcentaje ajustado por defecto a 30% para mayor cobertura
+# Filtro de porcentaje dinámico
 desc_minimo = st.sidebar.slider("Descuento Mínimo (%):", min_value=10, max_value=80, value=30, step=5)
 
 lista_almacenes = ["Todos los Almacenes", "Éxito", "Alkosto", "Ktronix"]
@@ -130,7 +139,7 @@ st.sidebar.metric("Clics en Ofertas", stats["clics_ofertas"])
 # PANEL PRINCIPAL
 # ==========================================
 st.title("🔥 Las Mejores Gangas de Colombia")
-st.write("Verificamos y filtramos las ofertas del mercado.")
+st.write("Verificamos y filtramos las ofertas del mercado en tiempo real.")
 
 st.markdown("""
     <div class="banner-publicidad">
@@ -143,20 +152,24 @@ todas_ofertas = cargar_ofertas_guardadas()
 ofertas_filtradas = []
 for prod in todas_ofertas:
     pct = obtener_porcentaje_num(prod.get("Descuento", "0"))
-    cat_prod = str(prod.get("Categoria", "General")).lower()
-    alm_prod = str(prod.get("Almacen", "General")).lower()
+    cat_prod = str(prod.get("Categoria", "General")).strip().lower()
+    alm_prod = str(prod.get("Almacen", "General")).strip().lower()
     
-    cumple_descuento = pct >= desc_minimo
+    cumple_descuento = (pct >= desc_minimo)
     
+    # Filtro flexible para Almacén (limpia espacios y minúsculas)
     if alm_seleccionado == "Todos los Almacenes":
         cumple_almacen = True
     else:
-        cumple_almacen = alm_seleccionado.lower() in alm_prod or alm_prod in alm_seleccionado.lower()
+        target_alm = alm_seleccionado.strip().lower()
+        cumple_almacen = (target_alm in alm_prod) or (alm_prod in target_alm)
         
+    # Filtro flexible para Categoría
     if cat_seleccionada == "Todas las Categorías":
         cumple_categoria = True
     else:
-        cumple_categoria = cat_seleccionada.lower() in cat_prod or cat_prod in cat_seleccionada.lower()
+        target_cat = cat_seleccionada.strip().lower()
+        cumple_categoria = (target_cat in cat_prod) or (cat_prod in target_cat)
     
     if cumple_descuento and cumple_categoria and cumple_almacen:
         ofertas_filtradas.append(prod)
@@ -207,4 +220,4 @@ if ofertas_filtradas:
             use_container_width=True
         )
 else:
-    st.info(f"No hay ofertas cargadas con descuento ≥ {desc_minimo}%. Intente bajar el porcentaje en la barra lateral.")
+    st.info(f"No hay ofertas cargadas con descuento ≥ {desc_minimo}%. Intente bajar el porcentaje en la barra lateral o cambiar los filtros de almacén.")
