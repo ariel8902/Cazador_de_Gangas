@@ -13,30 +13,6 @@ st.set_page_config(
     layout="wide"
 )
 
-STATS_FILE = "metricas.json"
-
-def cargar_metricas():
-    if os.path.exists(STATS_FILE):
-        try:
-            with open(STATS_FILE, "r") as f:
-                return json.load(f)
-        except:
-            pass
-    return {"visitas": 0, "clics_ofertas": 0}
-
-def guardar_metricas(data):
-    try:
-        with open(STATS_FILE, "w") as f:
-            json.dump(data, f)
-    except:
-        pass
-
-stats = cargar_metricas()
-if "visita_registrada" not in st.session_state:
-    stats["visitas"] += 1
-    guardar_metricas(stats)
-    st.session_state["visita_registrada"] = True
-
 # Estilos CSS
 st.markdown("""
     <style>
@@ -79,145 +55,88 @@ st.markdown("""
         margin-top: 10px;
         width: 100%;
     }
-    .banner-publicidad {
-        border: 2px dashed #bbbbbb;
-        background-color: #f5f5f5;
-        border-radius: 8px;
-        padding: 15px;
-        text-align: center;
-        color: #555555;
-        margin: 15px 0;
-        font-size: 13px;
-    }
     </style>
 """, unsafe_allow_html=True)
 
-def cargar_ofertas_guardadas():
-    if os.path.exists("ofertas.json"):
+# LECTURA DIRECTA DE DISCO (SIN CACHÉ PARA EVITAR DATOS ESTÁTICOS)
+def cargar_ofertas_directo():
+    archivo = "ofertas.json"
+    if os.path.exists(archivo):
         try:
-            with open("ofertas.json", "r", encoding="utf-8") as f:
-                return json.load(f)
+            with open(archivo, "r", encoding="utf-8") as f:
+                datos = json.load(f)
+                return datos
         except Exception as e:
-            st.error(f"Error al cargar ofertas.json: {e}")
+            st.error(f"Error leyendo {archivo}: {e}")
     return []
 
 def obtener_porcentaje_num(texto_descuento):
     if not texto_descuento:
         return 0
-    # Extrae el primer número entero encontrado en el texto de descuento
     numeros = re.findall(r'\d+', str(texto_descuento))
     if numeros:
         return int(numeros[0])
     return 0
 
+# Cargar base de datos actual
+todas_ofertas = cargar_ofertas_directo()
+
 # ==========================================
-# BARRA LATERAL (CONTROLES Y AUDITORÍA)
+# BARRA LATERAL (CONTROLES Y DIAGNÓSTICO)
 # ==========================================
 st.sidebar.title("🔥 Cazador de Gangas")
-st.sidebar.caption("Descuentos reales en Colombia")
 
-modo_vista = st.sidebar.radio("Vista de navegación:", ["Catálogo Comercial 🛍️", "Tabla de Control 📊"])
+# DIAGNÓSTICO EN TIEMPO REAL DEL ARCHIVO JSON
+conteo_exito = sum(1 for p in todas_ofertas if "exito" in str(p.get("Almacen", "")).lower())
+conteo_alkosto = sum(1 for p in todas_ofertas if "alkosto" in str(p.get("Almacen", "")).lower())
+conteo_ktronix = sum(1 for p in todas_ofertas if "ktronix" in str(p.get("Almacen", "")).lower())
+
+st.sidebar.markdown("### 📊 Estado de Base de Datos")
+st.sidebar.info(f"**Total en JSON:** {len(todas_ofertas)}\n- **Éxito:** {conteo_exito}\n- **Alkosto:** {conteo_alkosto}\n- **Ktronix:** {conteo_ktronix}")
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("⚙️ Filtros de Búsqueda")
-
-# Filtro de porcentaje dinámico
-desc_minimo = st.sidebar.slider("Descuento Mínimo (%):", min_value=10, max_value=80, value=30, step=5)
+desc_minimo = st.sidebar.slider("Descuento Mínimo (%):", min_value=0, max_value=80, value=10, step=5)
 
 lista_almacenes = ["Todos los Almacenes", "Éxito", "Alkosto", "Ktronix"]
-lista_categorias = ["Todas las Categorías", "Tecnología", "Electrodomésticos", "Celulares"]
-
-cat_seleccionada = st.sidebar.selectbox("Seleccionar Categoría:", lista_categorias)
 alm_seleccionado = st.sidebar.selectbox("Seleccionar Almacén:", lista_almacenes)
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("📈 Auditoría de Tráfico")
-st.sidebar.metric("Visitas Totales", stats["visitas"])
-st.sidebar.metric("Clics en Ofertas", stats["clics_ofertas"])
-
 # ==========================================
-# PANEL PRINCIPAL
+# FILTRADO Y DESPLIEGUE
 # ==========================================
-st.title("🔥 Las Mejores Gangas de Colombia")
-st.write("Verificamos y filtramos las ofertas del mercado en tiempo real.")
-
-st.markdown("""
-    <div class="banner-publicidad">
-        📢 <b>Espacio Publicitario Destacado</b> (Banner AdSense / Impresiones Monetizadas)
-    </div>
-""", unsafe_allow_html=True)
-
-todas_ofertas = cargar_ofertas_guardadas()
+st.title("🔥 Vitrina Multitienda de Gangas")
 
 ofertas_filtradas = []
 for prod in todas_ofertas:
     pct = obtener_porcentaje_num(prod.get("Descuento", "0"))
-    cat_prod = str(prod.get("Categoria", "General")).strip().lower()
-    alm_prod = str(prod.get("Almacen", "General")).strip().lower()
+    alm_prod = str(prod.get("Almacen", "")).strip().lower()
     
     cumple_descuento = (pct >= desc_minimo)
     
-    # Filtro flexible para Almacén (limpia espacios y minúsculas)
     if alm_seleccionado == "Todos los Almacenes":
         cumple_almacen = True
     else:
-        target_alm = alm_seleccionado.strip().lower()
-        cumple_almacen = (target_alm in alm_prod) or (alm_prod in target_alm)
-        
-    # Filtro flexible para Categoría
-    if cat_seleccionada == "Todas las Categorías":
-        cumple_categoria = True
-    else:
-        target_cat = cat_seleccionada.strip().lower()
-        cumple_categoria = (target_cat in cat_prod) or (cat_prod in target_cat)
-    
-    if cumple_descuento and cumple_categoria and cumple_almacen:
+        target = alm_seleccionado.strip().lower()
+        cumple_almacen = target in alm_prod
+
+    if cumple_descuento and cumple_almacen:
         ofertas_filtradas.append(prod)
 
 if ofertas_filtradas:
-    if modo_vista == "Catálogo Comercial 🛍️":
-        st.subheader(f"🛍️ Vitrina de Gangas ({len(ofertas_filtradas)} productos encontrados)")
-        
-        cols = st.columns(3)
-        for idx, prod in enumerate(ofertas_filtradas):
-            col = cols[idx % 3]
-            with col:
-                titulo = prod.get("Nombre", "Producto en oferta")
-                precio_norm = prod.get("Precio Normal", "N/A")
-                precio_ofe = prod.get("Precio Oferta", "N/A")
-                descuento = prod.get("Descuento", "Oferta")
-                enlace = prod.get("Enlace Directo", "#")
-                imagen = prod.get("Imagen", "https://via.placeholder.com/200?text=Sin+Imagen")
-                almacen_nombre = prod.get("Almacen", "Tienda")
-
-                st.markdown(f"""
-                    <div class="card-producto">
-                        <img src="{imagen}" style="max-width: 100%; height: 180px; object-fit: contain; margin-bottom: 10px;">
-                        <span class="badge-descuento">-{descuento}</span>
-                        <h4 style="font-size: 14px; margin: 10px 0; height: 38px; overflow: hidden;">{titulo}</h4>
-                        <p style="font-size: 11px; color: #666; margin-bottom: 5px;">📍 {almacen_nombre}</p>
-                        <p class="precio-normal">Antes: {precio_norm}</p>
-                        <p class="precio-oferta">Ahora: {precio_ofe}</p>
-                        <a href="{enlace}" target="_blank" class="btn-comprar">Ver Ganga en la Tienda ➔</a>
-                    </div>
-                """, unsafe_allow_html=True)
-
-            if (idx + 1) % 6 == 0 and (idx + 1) < len(ofertas_filtradas):
-                st.markdown("""
-                    <div class="banner-publicidad">
-                        💵 <b>Bloque Publicitario Intercalado</b> (Monetización por Clic/Vista)
-                    </div>
-                """, unsafe_allow_html=True)
-
-    else:
-        st.subheader("📊 Tabla Interna de Control")
-        df = pd.DataFrame(ofertas_filtradas)
-        st.dataframe(
-            df,
-            column_config={
-                "Enlace Directo": st.column_config.LinkColumn("Enlace de Compra", display_text="Abrir Oferta 🔗")
-            },
-            use_container_width=True
-        )
+    st.subheader(f"Mostrando {len(ofertas_filtradas)} ofertas")
+    cols = st.columns(3)
+    for idx, prod in enumerate(ofertas_filtradas):
+        col = cols[idx % 3]
+        with col:
+            st.markdown(f"""
+                <div class="card-producto">
+                    <img src="{prod.get('Imagen', '')}" style="max-width: 100%; height: 160px; object-fit: contain;">
+                    <span class="badge-descuento">{prod.get('Descuento', 'Oferta')}</span>
+                    <h4 style="font-size: 13px; margin: 10px 0; height: 36px; overflow: hidden;">{prod.get('Nombre', '')}</h4>
+                    <p style="font-size: 11px; color: #666;">📍 {prod.get('Almacen', '')}</p>
+                    <p class="precio-normal">Antes: {prod.get('Precio Normal', 'N/A')}</p>
+                    <p class="precio-oferta">Ahora: {prod.get('Precio Oferta', 'N/A')}</p>
+                    <a href="{prod.get('Enlace Directo', '#')}" target="_blank" class="btn-comprar">Ver Ganga ➔</a>
+                </div>
+            """, unsafe_allow_html=True)
 else:
-    st.info(f"No hay ofertas cargadas con descuento ≥ {desc_minimo}%. Intente bajar el porcentaje en la barra lateral o cambiar los filtros de almacén.")
+    st.warning("No hay productos que coincidan con el filtro seleccionado.")
