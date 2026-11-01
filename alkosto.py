@@ -5,8 +5,8 @@ from bs4 import BeautifulSoup
 
 def extraer_alkosto(page):
     """
-    Extrae ofertas reales de Alkosto descartando estrictamente elementos del menú,
-    pie de página e información sin precio ni imagen.
+    Extrae ofertas reales de Alkosto capturando la grilla de productos
+    y omitiendo enlaces de navegación.
     """
     ofertas = []
     categorias_urls = [
@@ -19,6 +19,7 @@ def extraer_alkosto(page):
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
             
+            # Scroll para forzar la carga de la grilla
             for i in range(4):
                 page.evaluate(f"window.scrollTo(0, {i * 800});")
                 time.sleep(1)
@@ -26,7 +27,7 @@ def extraer_alkosto(page):
             content = page.content()
             soup = BeautifulSoup(content, "html.parser")
             
-            # Selectores de tarjetas de producto
+            # Selectores reales de tarjetas en la grilla de Alkosto
             productos = (
                 soup.find_all("form", class_=lambda x: x and "product-item" in x.lower()) or
                 soup.find_all("li", class_=lambda x: x and ("product" in x.lower() or "item" in x.lower())) or
@@ -35,35 +36,34 @@ def extraer_alkosto(page):
 
             for prod in productos:
                 try:
-                    # 1. Nombre y descarte de elementos de menú de usuario
-                    nombre_elem = prod.find(["h2", "h3", "a"], class_=lambda x: x and ("name" in x.lower() or "title" in x.lower()))
+                    # Título
+                    nombre_elem = prod.find(["h2", "h3", "a", "span"], class_=lambda x: x and ("name" in x.lower() or "title" in x.lower()))
                     nombre = nombre_elem.get_text(strip=True) if nombre_elem else None
 
-                    palabras_basura = ["mi cuenta", "mi perfil", "direcciones", "mis pedidos", "paga a cuotas", "0% interés", "favoritos", "servicio al cliente"]
-                    if not nombre or len(nombre) < 6 or any(bad in nombre.lower() for bad in palabras_basura):
+                    # Filtro anti-basura de menú
+                    if not nombre or len(nombre) < 6 or any(bad in nombre.lower() for bad in ["mi cuenta", "mi perfil", "direcciones", "paga a cuotas", "0% interés"]):
                         continue
 
-                    # 2. Enlace directo
+                    # Enlace
                     link_elem = prod.find("a", href=True)
                     if not link_elem:
                         continue
                     href = link_elem['href']
                     enlace = f"https://www.alkosto.com{href}" if href.startswith("/") else href
 
-                    # 3. Precios reales con signo $ (Filtro indispensable contra elementos basura)
-                    textos_precio = [elem.get_text(strip=True) for elem in prod.find_all(text=re.compile(r'\$\s*[\d\.\,]+'))]
-                    if not textos_precio:
-                        continue  # Si no tiene precio con $, no es un producto real
-
-                    precio_normal = "N/A"
-                    precio_oferta = "N/A"
+                    # Precios (Extracción flexible)
+                    precios = prod.find_all(["span", "div", "p"], class_=lambda x: x and "price" in x.lower())
+                    textos_precio = [p.get_text(strip=True) for p in precios if "$" in p.get_text()]
+                    
+                    precio_normal = "Consultar tienda"
+                    precio_oferta = "Ver Oferta"
                     if len(textos_precio) >= 2:
                         precio_normal = textos_precio[0]
                         precio_oferta = textos_precio[1]
                     elif len(textos_precio) == 1:
                         precio_oferta = textos_precio[0]
 
-                    # 4. Imagen real del producto
+                    # Imagen
                     imagen_url = None
                     imgs = prod.find_all("img")
                     for img in imgs:
@@ -72,13 +72,10 @@ def extraer_alkosto(page):
                             imagen_url = src.split(",")[0].split()[0]
                             break
                     
-                    if not imagen_url:
-                        continue  # Si no tiene imagen válida, se omite
-
-                    if imagen_url.startswith("//"):
+                    if imagen_url and imagen_url.startswith("//"):
                         imagen_url = "https:" + imagen_url
 
-                    # 5. Descuento
+                    # Descuento
                     descuento = "Oferta"
                     desc_match = prod.find(text=re.compile(r'-\d+%|\d+%\s*OFF|\d+%', re.IGNORECASE))
                     if desc_match:
@@ -92,7 +89,7 @@ def extraer_alkosto(page):
                         "Precio Oferta": precio_oferta,
                         "Descuento": descuento,
                         "Enlace Directo": enlace,
-                        "Imagen": imagen_url,
+                        "Imagen": imagen_url or "https://via.placeholder.com/200?text=Alkosto+Oferta",
                         "Almacen": "Alkosto",
                         "Categoria": cat_nombre
                     })
