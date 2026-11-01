@@ -3,16 +3,18 @@ from bs4 import BeautifulSoup
 
 def extraer_ktronix(page):
     """
-    Extrae ofertas del almacén Ktronix incluyendo la captura de la imagen original.
+    Extrae ofertas del almacén Ktronix incluyendo la captura de la imagen original
+    y la etiqueta formal del almacén para el filtro de la vitrina.
     """
     ofertas = []
     url_ktronix = "https://www.ktronix.com/ofertas"
     
     try:
+        # Carga rápida utilizando domcontentloaded para evitar tiempos de espera agotados
         page.goto(url_ktronix, wait_until="domcontentloaded", timeout=60000)
         
-        # Desplazamiento forzado para activar la carga perezosa de imágenes (lazy loading)
-        for i in range(5):
+        # Desplazamiento forzado para activar la carga perezosa de imágenes
+        for i in range(4):
             page.evaluate(f"window.scrollTo(0, {i * 800});")
             time.sleep(1)
 
@@ -24,15 +26,15 @@ def extraer_ktronix(page):
 
         for prod in productos:
             try:
-                # 1. Nombre
+                # 1. Nombre del producto
                 nombre_elem = prod.find(["h2", "h3", "a"], class_=lambda x: x and ("name" in x.lower() or "title" in x.lower()))
                 nombre = nombre_elem.get_text(strip=True) if nombre_elem else None
 
-                # 2. Enlace
+                # 2. Enlace directo a la oferta
                 link_elem = prod.find("a", href=True)
                 enlace = f"https://www.ktronix.com{link_elem['href']}" if link_elem and link_elem['href'].startswith("/") else (link_elem['href'] if link_elem else None)
 
-                # 3. Imagen Real
+                # 3. Imagen real del producto
                 img_elem = prod.find("img")
                 imagen_url = None
                 if img_elem:
@@ -44,7 +46,7 @@ def extraer_ktronix(page):
                     if imagen_url and imagen_url.startswith("//"):
                         imagen_url = "https:" + imagen_url
 
-                # 4. Precios
+                # 4. Extracción de precios (Normal y Oferta)
                 precios = prod.find_all(["span", "div"], class_=lambda x: x and "price" in x.lower())
                 precio_normal = "N/A"
                 precio_oferta = "N/A"
@@ -55,6 +57,7 @@ def extraer_ktronix(page):
                 elif len(precios) == 1:
                     precio_oferta = precios[0].get_text(strip=True)
 
+                # 5. Etiqueta de Porcentaje de Descuento
                 descuento = "Oferta"
                 desc_elem = prod.find(["span", "div"], class_=lambda x: x and "discount" in x.lower())
                 if desc_elem:
@@ -69,7 +72,7 @@ def extraer_ktronix(page):
                         "Enlace Directo": enlace,
                         "Imagen": imagen_url or "https://via.placeholder.com/200?text=Ktronix+Oferta",
                         "Almacen": "Ktronix",
-                        "Categoria": "Ofertas Generales"
+                        "Categoria": "Tecnología"
                     })
 
             except Exception:
