@@ -25,27 +25,31 @@ def _ejecutar_en_hilo():
             
             url = "https://www.alkosto.com/ofertas/c/ofertas-alkosto"
             print(f"    Navegando a: {url}")
-            page.goto(url, timeout=40000, wait_until="domcontentloaded")
+            page.goto(url, timeout=45000, wait_until="domcontentloaded")
             
-            try:
-                page.wait_for_selector("a[href*='/p/']", timeout=12000)
-            except Exception:
-                print("    ⚠️ Advertencia: Timeout esperando enlaces de productos...")
+            # Dar tiempo prudente para que cargue el script de la vitrina
+            page.wait_for_timeout(5000)
 
-            for _ in range(5):
-                page.mouse.wheel(0, 2500)
-                page.wait_for_timeout(2000)
+            # Hacer scroll gradual para forzar la carga de productos (lazy load)
+            for i in range(6):
+                page.mouse.wheel(0, 3000)
+                page.wait_for_timeout(2500)
             
-            tarjetas = page.locator("div.product-item, li.product-item, div[class*='product-card'], article, div[class*='product-summary']").all()
-            if not tarjetas or len(tarjetas) <= 1:
-                tarjetas = page.locator("article, li, div[class*='item']").all()
+            # Apuntar directamente a los contenedores reales de productos de la vitrina de Alkosto
+            tarjetas = page.locator("li.product-item, div.product__item, div[class*='product-card'], article[class*='product']").all()
+            if not tarjetas:
+                tarjetas = page.locator("div.search-result-matched-products, div[class*='grid-item']").all()
                 
-            print(f"    📊 Elementos de productos detectados: {len(tarjetas)}")
+            print(f"    📊 Tarjetas de productos reales detectadas: {len(tarjetas)}")
             
-            for tarjeta in tarjetas:
+            for index, tarjeta in enumerate(tarjetas):
                 try:
                     texto_tarjeta = tarjeta.inner_text()
                     
+                    # Imprimir un poco de texto de las primeras 3 tarjetas para depuración en consola
+                    if index < 3:
+                        print(f"    🔎 [Depuración Tarjeta {index+1}]: {texto_tarjeta.replace(chr(10), ' ')[:100]}...")
+
                     match_pct = re.search(r'(?:-\s*)?([5-9][0-9]|100)\s*%', texto_tarjeta)
                     if not match_pct:
                         continue
