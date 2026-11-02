@@ -9,7 +9,7 @@ def limpiar_precio(texto_precio):
 def extraer_alkosto(page):
     """
     Extractor definitivo de Alkosto.
-    Extrae texto correctamente usando .evaluate() sobre el manejador JS.
+    Extrae nombre, precios y enlaces directamente desde los elementos encontrados.
     """
     ofertas = []
     categorias_urls = [
@@ -28,13 +28,11 @@ def extraer_alkosto(page):
                 print(f"    ⚠️ Advertencia en carga de página: {e}")
                 continue
 
-            # Espera a que los enlaces de productos estén presentes
             try:
                 page.wait_for_selector("a[href*='/p/']", timeout=15000)
             except Exception:
                 pass
 
-            # Scroll gradual para activar carga perezosa
             for i in range(3):
                 page.evaluate(f"window.scrollTo(0, {(i + 1) * 700});")
                 time.sleep(1.2)
@@ -54,29 +52,28 @@ def extraer_alkosto(page):
                     enlaces_procesados.add(href)
                     enlace_producto = href if href.startswith("http") else f"https://www.alkosto.com{href}"
 
-                    # Obtener texto del contenedor padre de manera segura vía evaluate
-                    card = link.evaluate_handle("el => el.closest('li') || el.closest('div.product__item') || el.parentElement")
-                    texto_tarjeta = card.evaluate("el => el.innerText") if card else ""
+                    # Obtener el texto completo del bloque que envuelve al enlace de forma segura
+                    texto_bloque = link.evaluate("el => { let p = el.closest('div, li'); return p ? p.innerText : el.innerText; }") or ""
+                    
+                    if not texto_bloque.strip():
+                        continue
 
-                    if not texto_tarjeta or len(texto_tarjeta.strip()) < 5:
-                        texto_tarjeta = link.evaluate("el => el.innerText") or ""
-
-                    lineas = [l.strip() for l in texto_tarjeta.split('\n') if l.strip()]
+                    lineas = [l.strip() for l in texto_bloque.split('\n') if l.strip()]
                     if not lineas:
                         continue
 
-                    # Extraer el nombre del producto
+                    # Extraer nombre (primera línea larga que no sea precio ni basura)
                     nombre = None
                     palabras_omitir = ['envío', 'garantía', 'seguro', 'cuota', 'opiniones', 'agotado', '$']
                     for linea in lineas:
-                        if len(linea) > 10 and not any(k in linea.lower() for k in palabras_omitir):
+                        if len(linea) > 8 and not any(k in linea.lower() for k in palabras_omitir):
                             nombre = linea
                             break
 
                     if not nombre and lineas:
                         nombre = lineas[0]
 
-                    # Extraer precios numéricos reales
+                    # Extraer precios
                     precios_raw = [l for l in lineas if '$' in l]
                     precios_num = [limpiar_precio(p) for p in precios_raw if limpiar_precio(p) > 50000]
                     precios_unicos = sorted(list(dict.fromkeys(precios_num)), reverse=True)
@@ -113,6 +110,8 @@ def extraer_alkosto(page):
                     })
 
                 except Exception as ex:
+                    # Imprimir error exacto si un producto falla, para no dejarlo a ciegas
+                    # print(f"    ⚠️ Error en producto: {ex}")
                     continue
 
         except Exception as e:
