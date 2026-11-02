@@ -64,7 +64,8 @@ with tab1:
             if almacen == "Alkosto":
                 resultados = extraer_alkosto()
             elif almacen == "Éxito":
-                resultados = extraer_exito()
+                # Llamada corregida pasando los 3 argumentos posicionales requeridos
+                resultados = extraer_exito(1, "Ofertas", "https://www.exito.com/ofertas")
             else:
                 resultados = []
 
