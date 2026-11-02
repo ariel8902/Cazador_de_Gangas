@@ -8,8 +8,8 @@ def limpiar_precio(texto_precio):
 
 def extraer_alkosto(page):
     """
-    Extractor flexible de Alkosto.
-    Captura cualquier producto con precio rebajado y muestra el descuento detectado.
+    Extractor de Alkosto enfocado en datos reales y descuentos reales.
+    Filtra cuotas y exige que exista una diferencia real entre precio normal y oferta.
     """
     ofertas = []
     categorias_urls = [
@@ -51,29 +51,39 @@ def extraer_alkosto(page):
                     if not lineas:
                         continue
 
-                    nombre = next((l for l in lineas if len(l) > 6 and '$' not in l), lineas[0])
+                    # Filtrar líneas que sean basura o cuotas de financiación
+                    lineas_validas = []
+                    palabras_basura = ['cuota', 'meses', 'tasas', 'intereses', 'opiniones', 'agotado']
+                    for l in lineas:
+                        if not any(b in l.lower() for b in palabras_basura):
+                            lineas_validas.append(l)
 
-                    precios_raw = [l for l in lineas if '$' in l]
-                    precios_num = [limpiar_precio(p) for p in precios_raw if limpiar_precio(p) > 1000]
+                    # Nombre del producto
+                    nombre = next((l for l in lineas_validas if len(l) > 6 and '$' not in l), lineas_validas[0] if lineas_validas else "Producto Alkosto")
+
+                    # Extraer precios limpios (mayores a $50.000 para evitar valores residuales)
+                    precios_raw = [l for l in lineas_validas if '$' in l]
+                    precios_num = [limpiar_precio(p) for p in precios_raw if limpiar_precio(p) > 50000]
                     precios_unicos = sorted(list(dict.fromkeys(precios_num)), reverse=True)
 
-                    if not precios_unicos:
+                    # REGLA DE ORO: Necesitamos al menos dos precios distintos (Precio Anterior y Precio Oferta)
+                    if len(precios_unicos) < 2:
                         continue
 
-                    precio_alto = precios_unicos[0]
-                    precio_oferta = precios_unicos[-1] if len(precios_unicos) >= 2 else precio_alto
+                    precio_alto = precios_unicos[0]   # Precio de lista / tachado
+                    precio_oferta = precios_unicos[-1] # Precio real de venta en rebaja
 
-                    # Calcular porcentaje si hay diferencia de precios
-                    descuento_pct = 0
-                    if precio_alto > precio_oferta and precio_alto > 0:
-                        descuento_pct = ((precio_alto - precio_oferta) / precio_alto) * 100
+                    # Verificar que el descuento sea real (el precio alto debe superar al de oferta)
+                    if precio_alto <= precio_oferta:
+                        continue
 
-                    descuento_txt = f"-{int(descuento_pct)}%" if descuento_pct > 0 else "Oferta"
+                    descuento_pct = ((precio_alto - precio_oferta) / precio_alto) * 100
+                    descuento_txt = f"-{int(descuento_pct)}%"
 
                     str_precio_normal = f"${precio_alto:,.0f}".replace(",", ".")
                     str_precio_oferta = f"${precio_oferta:,.0f}".replace(",", ".")
 
-                    print(f"    🔥 [CAPTURADO] {nombre[:30]} | Normal: {str_precio_normal} | Oferta: {str_precio_oferta} ({descuento_txt})")
+                    print(f"    🔥 [OFERTA REAL {descuento_txt}] {nombre[:30]} | Normal: {str_precio_normal} -> Oferta: {str_precio_oferta}")
 
                     ofertas.append({
                         "Nombre": nombre,
@@ -81,7 +91,7 @@ def extraer_alkosto(page):
                         "Precio Oferta": str_precio_oferta,
                         "Descuento": descuento_txt,
                         "Enlace Directo": enlace_producto,
-                        "Imagen": "https://via.placeholder.com/200?text=Alkosto",
+                        "Imagen": "https://via.placeholder.com/200?text=Alkosto+Oferta",
                         "Almacen": "Alkosto",
                         "Categoria": cat_nombre
                     })
@@ -92,5 +102,5 @@ def extraer_alkosto(page):
         except Exception as e:
             print(f"--- [EXTRACTOR ALKOSTO] Error en {cat_nombre}: {str(e)} ---")
 
-    print(f"\n--- [EXTRACTOR ALKOSTO] TOTAL OFERTAS CAPTURADAS: {len(ofertas)} ---\n")
+    print(f"\n--- [EXTRACTOR ALKOSTO] TOTAL OFERTAS REALES VALIDADAS: {len(ofertas)} ---\n")
     return ofertas
