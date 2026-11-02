@@ -8,8 +8,8 @@ def limpiar_precio(texto_precio):
 
 def extraer_alkosto(page):
     """
-    Extractor de Alkosto con auditoría interna línea por línea
-    para identificar qué filtro está descartando las tarjetas capturadas.
+    Extractor definitivo de Alkosto.
+    Evita los cascarones vacíos esperando directamente los enlaces de producto con /p/.
     """
     ofertas = []
     categorias_urls = [
@@ -20,7 +20,7 @@ def extraer_alkosto(page):
 
     for cat_nombre, url in categorias_urls:
         try:
-            print(f"\n--- [AUDITORÍA ALKOSTO] Rastreando categoría: {cat_nombre} ---")
+            print(f"\n--- [EXTRACTOR ALKOSTO] Rastreando categoría: {cat_nombre} ---")
             
             try:
                 page.goto(url, timeout=60000, wait_until="domcontentloaded")
@@ -28,64 +28,96 @@ def extraer_alkosto(page):
                 print(f"    ⚠️ Advertencia en carga de página: {e}")
                 continue
 
-            time.sleep(random.uniform(4.0, 5.0))
-            page.mouse.wheel(0, 1200)
-            time.sleep(2.0)
+            # Espera explícita a que los enlaces de productos reales estén presentes en el DOM
+            try:
+                page.wait_for_selector("a[href*='/p/']", timeout=15000)
+            except Exception:
+                pass
 
-            productos = page.query_selector_all("div.product__item, div.ais-Hits-item, li.ais-Hits-item, div[class*='productGrid']")
-            if len(productos) == 0:
-                productos = page.query_selector_all("div[class*='product']")
+            # Scroll gradual para forzar la carga completa de la grilla
+            for i in range(3):
+                page.evaluate(f"window.scrollTo(0, {(i + 1) * 700});")
+                time.sleep(1.5)
 
-            print(f"    📊 Tarjetas detectadas: {len(productos)}")
+            # Capturar directamente todos los enlaces de productos reales
+            productos_links = page.query_selector_all("a[href*='/p/']")
+            print(f"    📊 Enlaces reales con /p/ encontrados: {len(productos_links)}")
 
-            for idx, card in enumerate(productos):
+            muestras = 0
+            enlaces_procesados = set()
+
+            for link in productos_links:
                 try:
-                    texto_tarjeta = card.inner_text()
-                    if not texto_tarjeta or "Mostrando" in texto_tarjeta:
+                    href = link.get_attribute("href")
+                    if not href or href in enlaces_procesados:
+                        continue
+                    
+                    enlaces_procesados.add(href)
+                    enlace_producto = href if href.startswith("http") else f"https://www.alkosto.com{href}"
+
+                    # Intentar obtener el texto del contenedor padre de la tarjeta o del enlace mismo
+                    card = link.evaluate_handle("el => el.closest('li') || el.closest('div.product__item') || el.parentElement")
+                    texto_tarjeta = card.inner_text() if card else ""
+
+                    if not texto_tarjeta or len(texto_tarjeta.strip()) < 5:
+                        texto_tarjeta = link.inner_text()
+
+                    lineas = [l.strip() for l in texto_tarjeta.split('\n') if l.strip()]
+                    if not lineas:
                         continue
 
-                    # 1. Probar enlace
-                    enlace_element = card.query_selector("a[href]")
-                    href = enlace_element.get_attribute("href") if enlace_element else "Sin href"
-                    
-                    # 2. Probar precios
-                    lineas = [l.strip() for l in texto_tarjeta.split('\n') if l.strip()]
+                    # Extraer el nombre del producto
+                    nombre = None
+                    palabras_omitir = ['envío', 'garantía', 'seguro', 'cuota', 'opiniones', 'agotado', '$']
+                    for linea in lineas:
+                        if len(linea) > 10 and not any(k in linea.lower() for k in palabras_omitir):
+                            nombre = linea
+                            break
+
+                    if not nombre and lineas:
+                        nombre = lineas[0]
+
+                    # Extraer precios numéricos reales
                     precios_raw = [l for l in lineas if '$' in l]
                     precios_num = [limpiar_precio(p) for p in precios_raw if limpiar_precio(p) > 50000]
+                    precios_unicos = sorted(list(dict.fromkeys(precios_num)), reverse=True)
 
-                    print(f"    [Tarjeta {idx+1}] Href: {href[:40]} | Precios encontrados: {precios_num}")
-
-                    if not precios_num:
+                    if not precios_unicos:
                         continue
 
-                    # Asignar valores por defecto para asegurar captura inmediata en prueba
-                    precio_alto = max(precios_num)
-                    precio_oferta = min(precios_num)
-                    nombre = lineas[0] if lineas else "Producto Alkosto"
+                    precio_alto = precios_unicos[0]
+                    precio_oferta = precios_unicos[-1] if len(precios_unicos) >= 2 else precio_alto
 
-                    enlace_producto = href if href.startswith("http") else f"https://www.alkosto.com{href if href.startswith('/') else '/' + href}"
+                    descuento_txt = "Oferta"
+                    if precio_alto > precio_oferta:
+                        pct = ((precio_alto - precio_oferta) / precio_alto) * 100
+                        descuento_txt = f"-{pct:.0f}%"
 
-                    print(f"    ✅ ¡CAPTURADO CON ÉXITO! -> {nombre[:35]} | Oferta: ${precio_oferta:,.0f}")
+                    str_precio_normal = f"${precio_alto:,.0f}".replace(",", ".")
+                    str_precio_oferta = f"${precio_oferta:,.0f}".replace(",", ".")
+
+                    if muestras < 3:
+                        print(f"\n    🔥 [OFERTA CAPTURADA] {nombre[:40]}")
+                        print(f"       -> Oferta: {str_precio_oferta} | Normal: {str_precio_normal}")
+                        print(f"       -> Enlace: {enlace_producto[:60]}...")
+                        muestras += 1
 
                     ofertas.append({
                         "Nombre": nombre,
-                        "Precio Normal": f"${precio_alto:,.0f}".replace(",", "."),
-                        "Precio Oferta": f"${precio_oferta:,.0f}".replace(",", "."),
-                        "Descuento": "Oferta",
+                        "Precio Normal": str_precio_normal,
+                        "Precio Oferta": str_precio_oferta,
+                        "Descuento": descuento_txt,
                         "Enlace Directo": enlace_producto,
-                        "Imagen": "https://via.placeholder.com/200?text=Alkosto",
+                        "Imagen": "https://via.placeholder.com/200?text=Alkosto+Oferta",
                         "Almacen": "Alkosto",
                         "Categoria": cat_nombre
                     })
 
-                except Exception as ex:
-                    print(f"    ❌ Error interno en tarjeta {idx+1}: {str(ex)}")
+                except Exception:
                     continue
 
-            time.sleep(1.0)
-
         except Exception as e:
-            print(f"--- [AUDITORÍA ALKOSTO] Error general en {cat_nombre}: {str(e)} ---")
+            print(f"--- [EXTRACTOR ALKOSTO] Error general en {cat_nombre}: {str(e)} ---")
 
-    print(f"\n--- [AUDITORÍA ALKOSTO] TOTAL OFERTAS CAPTURADAS: {len(ofertas)} ---\n")
+    print(f"\n--- [EXTRACTOR ALKOSTO] TOTAL OFERTAS REALES VALIDADAS: {len(ofertas)} ---\n")
     return ofertas
