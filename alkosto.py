@@ -9,7 +9,7 @@ def limpiar_precio(texto_precio):
 def extraer_alkosto(page):
     """
     Extractor definitivo de Alkosto.
-    Evita los cascarones vacíos esperando directamente los enlaces de producto con /p/.
+    Extrae texto correctamente usando .evaluate() sobre el manejador JS.
     """
     ofertas = []
     categorias_urls = [
@@ -28,18 +28,17 @@ def extraer_alkosto(page):
                 print(f"    ⚠️ Advertencia en carga de página: {e}")
                 continue
 
-            # Espera explícita a que los enlaces de productos reales estén presentes en el DOM
+            # Espera a que los enlaces de productos estén presentes
             try:
                 page.wait_for_selector("a[href*='/p/']", timeout=15000)
             except Exception:
                 pass
 
-            # Scroll gradual para forzar la carga completa de la grilla
+            # Scroll gradual para activar carga perezosa
             for i in range(3):
                 page.evaluate(f"window.scrollTo(0, {(i + 1) * 700});")
-                time.sleep(1.5)
+                time.sleep(1.2)
 
-            # Capturar directamente todos los enlaces de productos reales
             productos_links = page.query_selector_all("a[href*='/p/']")
             print(f"    📊 Enlaces reales con /p/ encontrados: {len(productos_links)}")
 
@@ -55,12 +54,12 @@ def extraer_alkosto(page):
                     enlaces_procesados.add(href)
                     enlace_producto = href if href.startswith("http") else f"https://www.alkosto.com{href}"
 
-                    # Intentar obtener el texto del contenedor padre de la tarjeta o del enlace mismo
+                    # Obtener texto del contenedor padre de manera segura vía evaluate
                     card = link.evaluate_handle("el => el.closest('li') || el.closest('div.product__item') || el.parentElement")
-                    texto_tarjeta = card.inner_text() if card else ""
+                    texto_tarjeta = card.evaluate("el => el.innerText") if card else ""
 
                     if not texto_tarjeta or len(texto_tarjeta.strip()) < 5:
-                        texto_tarjeta = link.inner_text()
+                        texto_tarjeta = link.evaluate("el => el.innerText") or ""
 
                     lineas = [l.strip() for l in texto_tarjeta.split('\n') if l.strip()]
                     if not lineas:
@@ -113,7 +112,7 @@ def extraer_alkosto(page):
                         "Categoria": cat_nombre
                     })
 
-                except Exception:
+                except Exception as ex:
                     continue
 
         except Exception as e:
