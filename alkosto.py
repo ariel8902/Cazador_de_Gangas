@@ -23,23 +23,17 @@ def extraer_alkosto(page):
                 pass
 
             time.sleep(5.0)
-            # Desplazar la página para forzar la carga completa de la vitrina
-            page.mouse.wheel(0, 2000)
+            page.mouse.wheel(0, 2500)
             time.sleep(3.0)
 
-            # Selector exclusivo para tarjetas de productos reales de la vitrina (fuera de menús)
-            tarjetas = page.query_selector_all("div.product__item, li.product-item, div.grid-item, div[class*='summary'], div[class*='product-item']")
-            print(f"    📊 Tarjetas de producto reales encontradas: {len(tarjetas)}")
+            # Enfoque blindado: capturar todos los enlaces de productos directamente
+            links_productos = page.query_selector_all("a[href*='/p/']")
+            print(f"    📊 Enlaces de producto encontrados: {len(links_productos)}")
 
             enlaces_procesados = set()
 
-            for tarjeta in tarjetas:
+            for link in links_productos:
                 try:
-                    # Buscar el enlace del producto dentro de la tarjeta
-                    link = tarjeta.query_selector("a[href*='/p/']")
-                    if not link:
-                        continue
-                    
                     href = link.get_attribute("href")
                     if not href or href in enlaces_procesados:
                         continue
@@ -47,18 +41,19 @@ def extraer_alkosto(page):
                     enlaces_procesados.add(href)
                     enlace_producto = href if href.startswith("http") else f"https://www.alkosto.com{href}"
 
-                    # Extraer texto completo, HTML interno e imagen de la tarjeta
-                    datos = tarjeta.evaluate("""el => {
-                        let text = el.innerText || '';
-                        let html = el.innerHTML || '';
-                        let img = el.querySelector('img');
+                    # Subir dinámicamente al contenedor de la tarjeta para extraer texto e HTML completo
+                    datos = link.evaluate("""el => {
+                        let card = el.closest('li, div[class*="product"], div[class*="summary"], div[class*="item"], article') || el.parentElement;
+                        let text = card ? (card.innerText || '') : el.innerText;
+                        let html = card ? (card.innerHTML || '') : el.innerHTML;
+                        let img = card ? card.querySelector('img') : null;
                         let imgSrc = img ? (img.src || img.getAttribute('data-src') || '') : '';
                         return { text: text, html: html, img: imgSrc };
                     }""")
 
                     contenido_total = datos['text'] + " " + datos['html']
 
-                    # FILTRO ESTRICTO CON SIGNO MENOS: busca de -50% hasta -100%
+                    # FILTRO LÁSER OBLIGATORIO: Exigir el signo menos (-) seguido de 50 a 100 y el símbolo %
                     match_pct = re.search(r'-\s*(5[0-9]|[6-9]\d|100)\s*%', contenido_total)
                     if not match_pct:
                         continue
@@ -67,9 +62,9 @@ def extraer_alkosto(page):
                     descuento_val = int(match_num.group(1)) if match_num else 50
                     descuento_txt = f"-{descuento_val}%"
 
-                    # Extraer nombre del producto limpiando líneas de texto
+                    # Extraer nombre del producto limpio
                     lineas = [l.strip() for l in datos['text'].split('\n') if l.strip()]
-                    nombre = next((l for l in lineas if len(l) > 10 and '$' not in l and '%' not in l), "Portátil / Equipo Oferta")
+                    nombre = next((l for l in lineas if len(l) > 10 and '$' not in l and '%' not in l), "Equipo en Oferta Masiva")
 
                     # Extraer precios limpios (filtrando cuotas menores a 100k)
                     precios_raw = [l for l in lineas if '$' in l]
