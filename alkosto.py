@@ -32,43 +32,37 @@ def _ejecutar_en_hilo():
                 page.mouse.wheel(0, 3000)
                 page.wait_for_timeout(2500)
             
-            tarjetas = page.locator("div.product-item, li.product-item, div[class*='product'], article, div[class*='grid-item'], a[href*='/p/']").all()
-            print(f"    📊 Contenedores detectados en vitrina: {len(tarjetas)}")
+            # Selector enfocado estrictamente en la cuadrícula de productos de la vitrina (excluyendo filtros)
+            tarjetas = page.locator("li.product-item, div.product__item, div.search-result-product, div[class*='product-card']").all()
+            if not tarjetas:
+                tarjetas = page.locator("article[class*='product'], div[class*='cluster']").all()
+                
+            print(f"    📊 Tarjetas reales de vitrina detectadas: {len(tarjetas)}")
             
             for index, tarjeta in enumerate(tarjetas):
                 try:
                     texto_tarjeta = tarjeta.inner_text()
-                    if not texto_tarjeta or len(texto_tarjeta) < 10:
+                    if not texto_tarjeta or len(texto_tarjeta) < 20:
                         continue
                     
-                    # Mostrar en consola el texto de las primeras tarjetas para inspección
-                    if index < 5:
-                        print(f"    🔎 [Contenedor {index+1}]: {texto_tarjeta.replace(chr(10), ' | ')[:120]}...")
-
-                    # Búsqueda flexible de porcentajes
+                    # Buscar explícitamente el porcentaje de descuento (ej. 50%, -50%, etc.)
                     match_pct = re.search(r'(?:-\s*)?([4-9][0-9]|100)\s*%', texto_tarjeta)
                     if not match_pct:
                         continue
                     
                     descuento_num = int(match_pct.group(1))
-                    if descuento_num < 40: # Relajamos temporalmente a 40% para probar captura
+                    if descuento_num < 40:
                         continue
                         
                     descuento_txt = f"-{descuento_num}%"
                     
-                    href = ""
-                    if tarjeta.evaluate("el => el.tagName") == "A":
-                        href = tarjeta.get_attribute("href") or ""
-                    else:
-                        link_elem = tarjeta.locator("a[href*='/p/']").first
-                        if link_elem.count() > 0:
-                            href = link_elem.get_attribute("href") or ""
-                        else:
-                            link_elem = tarjeta.locator("a").first
-                            if link_elem.count() > 0:
-                                href = link_elem.get_attribute("href") or ""
+                    link_elem = tarjeta.locator("a[href*='/p/']").first
+                    href = link_elem.get_attribute("href") if link_elem.count() > 0 else ""
+                    if not href:
+                        link_elem = tarjeta.locator("a").first
+                        href = link_elem.get_attribute("href") if link_elem.count() > 0 else ""
                     
-                    if not href or ('/p/' not in href and 'http' not in href):
+                    if not href or '/p/' not in href:
                         continue
                         
                     enlace_producto = href if href.startswith("http") else f"https://www.alkosto.com{href}"
@@ -85,7 +79,7 @@ def _ejecutar_en_hilo():
                     precios_num = []
                     for pr in precios:
                         num = re.sub(r'[^\d]', '', pr)
-                        if num and int(num) > 30000:
+                        if num and int(num) > 50000:
                             precios_num.append(int(num))
                     
                     precios_num = sorted(list(set(precios_num)), reverse=True)
