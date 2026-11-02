@@ -25,19 +25,28 @@ def _ejecutar_en_hilo():
             
             url = "https://www.alkosto.com/ofertas/c/ofertas-alkosto"
             print(f"    Navegando a: {url}")
-            page.goto(url, timeout=35000, wait_until="domcontentloaded")
-            page.wait_for_timeout(4000)
+            page.goto(url, timeout=40000, wait_until="domcontentloaded")
             
-            for _ in range(4):
-                page.mouse.wheel(0, 2000)
-                page.wait_for_timeout(1500)
+            # Esperar a que el contenedor principal o las tarjetas aparezcan obligatoriamente en el DOM
+            try:
+                page.wait_for_selector("li.product-item, div.product__item, div[class*='product-card'], article, div.search-result", timeout=12000)
+            except Exception:
+                print("    ⚠️ Advertencia: Timeout esperando selectores estándar, procediendo con scroll forzado...")
+
+            # Hacer scroll gradual para activar el lazy load de las imágenes y productos
+            for _ in range(5):
+                page.mouse.wheel(0, 2500)
+                page.wait_for_timeout(2000)
             
-            tarjetas = page.locator("li.product-item, div.product__item, div[class*='product-card'], article").all()
+            # Selectores ampliados para atrapar cualquier estructura de VTEX
+            tarjetas = page.locator("li.product-item, div.product__item, div[class*='product-card'], article, div[class*='search-result']").all()
             print(f"    📊 Tarjetas detectadas: {len(tarjetas)}")
             
             for tarjeta in tarjetas:
                 try:
                     texto_tarjeta = tarjeta.inner_text()
+                    
+                    # Filtro estricto para buscar porcentajes de descuento masivos (-50% o más)
                     match_pct = re.search(r'-\s*(5[0-9]|[6-9]\d|100)\s*%', texto_tarjeta)
                     if not match_pct:
                         continue
@@ -72,6 +81,8 @@ def _ejecutar_en_hilo():
                     precio_alto = precios_num[0]
                     precio_oferta = precios_num[-1] if len(precios_num) >= 2 else precio_alto
                     
+                    print(f"    🔥 [GANGÓN CAPTURADO {descuento_txt}] {nombre[:30]} | Precio: ${precio_oferta:,.0f}")
+
                     ofertas.append({
                         "Nombre": nombre,
                         "Precio Normal": f"${precio_alto:,.0f}".replace(",", "."),
@@ -80,7 +91,7 @@ def _ejecutar_en_hilo():
                         "Enlace Directo": enlace_producto,
                         "Imagen": img_url if img_url.startswith("http") else "https://via.placeholder.com/200?text=Alkosto",
                         "Almacen": "Alkosto",
-                        "Categoria": "Hilo Aislado Síncrono"
+                        "Categoria": "Navegador Hilo Aislado"
                     })
                 except Exception:
                     continue
@@ -96,7 +107,7 @@ def extraer_alkosto(page_param=None):
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(_ejecutar_en_hilo)
         try:
-            return future.result(timeout=50)
+            return future.result(timeout=60)
         except Exception as e:
             print(f"--- [Error de Timeout/Hilo Alkosto] {str(e)} ---")
             return []
