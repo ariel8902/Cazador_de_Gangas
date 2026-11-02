@@ -28,14 +28,15 @@ def _ejecutar_en_hilo():
             page.goto(url, timeout=45000, wait_until="domcontentloaded")
             page.wait_for_timeout(6000)
 
+            # Scroll progresivo para cargar elementos dinámicos
             for _ in range(6):
                 page.mouse.wheel(0, 3000)
                 page.wait_for_timeout(2500)
             
-            # Selector enfocado estrictamente en la cuadrícula de productos de la vitrina (excluyendo filtros)
+            # Selectores optimizados para la cuadrícula de productos en Alkosto
             tarjetas = page.locator("li.product-item, div.product__item, div.search-result-product, div[class*='product-card']").all()
             if not tarjetas:
-                tarjetas = page.locator("article[class*='product'], div[class*='cluster']").all()
+                tarjetas = page.locator("article[class*='product'], div[class*='cluster'], div.product-item").all()
                 
             print(f"    📊 Tarjetas reales de vitrina detectadas: {len(tarjetas)}")
             
@@ -45,7 +46,7 @@ def _ejecutar_en_hilo():
                     if not texto_tarjeta or len(texto_tarjeta) < 20:
                         continue
                     
-                    # Buscar explícitamente el porcentaje de descuento (ej. 50%, -50%, etc.)
+                    # Captura de porcentajes de descuento entre 40% y 100%
                     match_pct = re.search(r'(?:-\s*)?([4-9][0-9]|100)\s*%', texto_tarjeta)
                     if not match_pct:
                         continue
@@ -56,6 +57,7 @@ def _ejecutar_en_hilo():
                         
                     descuento_txt = f"-{descuento_num}%"
                     
+                    # Extracción de enlaces de producto
                     link_elem = tarjeta.locator("a[href*='/p/']").first
                     href = link_elem.get_attribute("href") if link_elem.count() > 0 else ""
                     if not href:
@@ -67,6 +69,7 @@ def _ejecutar_en_hilo():
                         
                     enlace_producto = href if href.startswith("http") else f"https://www.alkosto.com{href}"
                     
+                    # Extracción de URL de imagen
                     img_elem = tarjeta.locator("img").first
                     img_url = ""
                     if img_elem.count() > 0:
@@ -75,6 +78,7 @@ def _ejecutar_en_hilo():
                     lineas = [l.strip() for l in texto_tarjeta.split('\n') if l.strip()]
                     nombre = next((l for l in lineas if len(l) > 10 and '$' not in l and '%' not in l), "Producto en Descuento Masivo")
                     
+                    # Procesamiento numérico de precios
                     precios = [l for l in lineas if '$' in l]
                     precios_num = []
                     for pr in precios:
