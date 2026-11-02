@@ -10,7 +10,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilos CSS personalizados para mejorar el diseño
+# Estilos CSS
 st.markdown("""
     <style>
     .main-title { font-size: 2.2rem; font-weight: 700; color: #FF4B4B; margin-bottom: 5px; }
@@ -31,7 +31,7 @@ if 'bot_token' not in st.session_state:
 if 'chat_id' not in st.session_state:
     st.session_state.chat_id = "@CazadorGangasBot"
 
-# --- BARRA LATERAL (GESTIÓN Y OPCIONES) ---
+# --- BARRA LATERAL ---
 st.sidebar.markdown("## ⚙️ **Gestión de Aplicación**")
 
 st.sidebar.markdown("### 📊 **Métricas en Tiempo Real**")
@@ -41,7 +41,7 @@ col_m2.metric("🖱️ Clics", st.session_state.clics, delta="+3")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 🛠️ **Control de Extractores**")
-almacen = st.sidebar.selectbox("Elija el almacén a rastrear:", ["Alkosto", "Éxito", "Falabella", "Ktronix"])
+almacen = st.sidebar.selectbox("Elija el almacén a rastrear:", ["Éxito", "Alkosto", "Falabella", "Ktronix"])
 
 limite_ofertas = st.sidebar.slider("Número máximo de ofertas:", min_value=5, max_value=50, value=20)
 
@@ -64,8 +64,8 @@ with tab1:
             if almacen == "Alkosto":
                 resultados = extraer_alkosto()
             elif almacen == "Éxito":
-                # Llamada corregida pasando los 3 argumentos posicionales requeridos
-                resultados = extraer_exito(1, "Ofertas", "https://www.exito.com/ofertas")
+                # Invocación explícita con kwargs
+                resultados = extraer_exito(pagina=1, categoria="Ofertas", url_busqueda="https://www.exito.com/ofertas")
             else:
                 resultados = []
 
@@ -77,8 +77,6 @@ with tab1:
 
     if st.session_state.gangas_guardadas:
         st.markdown("### 🛒 **Catálogo de Ofertas Capturadas**")
-        
-        # Galería visual organizada por columnas
         cols = st.columns(3)
         for idx, item in enumerate(st.session_state.gangas_guardadas):
             with cols[idx % 3]:
