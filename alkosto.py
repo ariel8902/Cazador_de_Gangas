@@ -15,13 +15,12 @@ def extraer_alkosto(page):
 
     for cat_nombre, url in categorias_urls:
         try:
-            print(f"\n--- [EXTRACTOR ALKOSTO] Rastreando categoría: {cat_nombre} ---")
+            print(f"\n--- [EXTRACTOR ALKOSTO] Rastreando ofertas en: {cat_nombre} ---")
             
             try:
                 page.goto(url, timeout=60000, wait_until="domcontentloaded")
-            except Exception as e:
-                print(f"    ⚠️ Error en goto: {e}")
-                continue
+            except Exception:
+                pass
 
             time.sleep(3.0)
             page.mouse.wheel(0, 1000)
@@ -31,11 +30,9 @@ def extraer_alkosto(page):
             print(f"    📊 Enlaces reales con /p/ encontrados: {len(productos_links)}")
 
             enlaces_procesados = set()
-            contador_intentos = 0
 
             for link in productos_links:
                 try:
-                    contador_intentos += 1
                     href = link.get_attribute("href")
                     if not href or href in enlaces_procesados:
                         continue
@@ -43,47 +40,79 @@ def extraer_alkosto(page):
                     enlaces_procesados.add(href)
                     enlace_producto = href if href.startswith("http") else f"https://www.alkosto.com{href}"
 
-                    # Extraer texto de forma segura
+                    # Intentar capturar la imagen real del producto desde la tarjeta contenedora
+                    img_url = "https://via.placeholder.com/200?text=Alkosto+Oferta"
+                    try:
+                        card_element = link.evaluate_handle("el => el.closest('li, div.product__item, div.grid-item') || el")
+                        img_tag = card_element.as_element().query_selector("img")
+                        if img_tag:
+                            src = img_tag.get_attribute("src") or img_tag.get_attribute("data-src")
+                            if src and src.startswith("http"):
+                                img_url = src
+                    except Exception:
+                        pass
+
+                    # Obtener texto del bloque del producto
                     texto = link.evaluate("el => { let p = el.closest('div, li'); return p ? p.innerText : el.innerText; }") or ""
                     
-                    lineas = [l.strip() for l in texto.split('\n') if l.strip()]
+                    lineas = [l.strip() for l in texto.split('\n'] if l.strip()]
                     if not lineas:
-                        print(f"    [Item {contador_intentos}] ⚠️ Descartado: Texto vacío en tarjeta.")
                         continue
 
-                    nombre = next((l for l in lineas if len(l) > 6 and '$' not in l), lineas[0])
+                    nombre = next((l for l in lineas if len(l) > 8 and '$' not in l), lineas[0])
 
-                    # Extraer precios
+                    # Buscar porcentaje de descuento explícito en el texto (ej: -50%, 50% DCTO)
+                    descuento_txt = "Oferta"
+                    porcentaje_val = 0
+                    for linea in lineas:
+                        if '%' in linea:
+                            match_pct = re.search(r'(\d+)\s*%', linea)
+                            if match_pct:
+                                val = int(match_pct.group(1))
+                                if val > porcentaje_val:
+                                    porcentaje_val = val
+                                    descuento_txt = f"-{val}%"
+
+                    # Extraer precios limpios
                     precios_raw = [l for l in lineas if '$' in l]
                     precios_num = [limpiar_precio(p) for p in precios_raw if limpiar_precio(p) > 10000]
                     precios_unicos = sorted(list(dict.fromkeys(precios_num)), reverse=True)
 
                     if not precios_unicos:
-                        print(f"    [Item {contador_intentos}] ⚠️ Descartado: No se hallaron precios en: {lineas[:3]}")
                         continue
 
-                    precio_val = precios_unicos[0]
-                    str_precio = f"${precio_val:,.0f}".replace(",", ".")
+                    precio_alto = precios_unicos[0]
+                    precio_oferta = precios_unicos[-1] if len(precios_unicos) >= 2 else precio_alto
 
-                    print(f"    ✅ [REGISTRO OK] {nombre[:30]} | Precio: {str_precio}")
+                    # Si no se halló porcentaje en texto pero hay dos precios, calcularlo matemáticamente
+                    if porcentaje_val == 0 and precio_alto > precio_oferta and precio_alto > 0:
+                        porcentaje_val = int(((precio_alto - precio_oferta) / precio_alto) * 100)
+                        if porcentaje_val > 0:
+                            descuento_txt = f"-{porcentaje_val}%"
+
+                    # FILTRO TÁCTICO: Si se exige descuento fuerte, aquí podemos asegurar que entre lo jugoso
+                    # (Si quiere que pasen todas las ofertas sin excepción, dejamos pasar todo lo detectado)
+                    str_precio_normal = f"${precio_alto:,.0f}".replace(",", ".")
+                    str_precio_oferta = f"${precio_oferta:,.0f}".replace(",", ".")
+
+                    print(f"    🔥 [OFERTA CAPTURADA] {nombre[:30]} | {descuento_txt} | Oferta: {str_precio_oferta}")
 
                     ofertas.append({
                         "Nombre": nombre,
-                        "Precio Normal": str_precio,
-                        "Precio Oferta": str_precio,
-                        "Descuento": "Oferta",
+                        "Precio Normal": str_precio_normal,
+                        "Precio Oferta": str_precio_oferta,
+                        "Descuento": descuento_txt,
                         "Enlace Directo": enlace_producto,
-                        "Imagen": "https://via.placeholder.com/200?text=Alkosto",
+                        "Imagen": img_url,
                         "Almacen": "Alkosto",
                         "Categoria": cat_nombre
                     })
 
-                except Exception as ex:
-                    print(f"    ❌ Excepción atrapada en item {contador_intentos}: {str(ex)}")
+                except Exception:
                     continue
 
         except Exception as e:
-            print(f"--- [EXTRACTOR ALKOSTO] Error general en {cat_nombre}: {str(e)} ---")
+            print(f"--- [EXTRACTOR ALKOSTO] Error en {cat_nombre}: {str(e)} ---")
 
-    print(f"\n--- [EXTRACTOR ALKOSTO] TOTAL REGISTROS VALIDADOS: {len(ofertas)} ---\n")
+    print(f"\n--- [EXTRACTOR ALKOSTO] TOTAL OFERTAS EXTRAÍDAS: {len(ofertas)} ---\n")
     return ofertas
