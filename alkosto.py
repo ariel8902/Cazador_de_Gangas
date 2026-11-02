@@ -40,7 +40,7 @@ def extraer_alkosto(page):
                     enlaces_procesados.add(href)
                     enlace_producto = href if href.startswith("http") else f"https://www.alkosto.com{href}"
 
-                    # Intentar capturar la imagen real del producto desde la tarjeta contenedora
+                    # Capturar imagen real del producto
                     img_url = "https://via.placeholder.com/200?text=Alkosto+Oferta"
                     try:
                         card_element = link.evaluate_handle("el => el.closest('li, div.product__item, div.grid-item') || el")
@@ -55,13 +55,13 @@ def extraer_alkosto(page):
                     # Obtener texto del bloque del producto
                     texto = link.evaluate("el => { let p = el.closest('div, li'); return p ? p.innerText : el.innerText; }") or ""
                     
-                    lineas = [l.strip() for l in texto.split('\n'] if l.strip()]
+                    lineas = [l.strip() for l in texto.split('\n') if l.strip()]
                     if not lineas:
                         continue
 
                     nombre = next((l for l in lineas if len(l) > 8 and '$' not in l), lineas[0])
 
-                    # Buscar porcentaje de descuento explícito en el texto (ej: -50%, 50% DCTO)
+                    # Buscar porcentaje de descuento
                     descuento_txt = "Oferta"
                     porcentaje_val = 0
                     for linea in lineas:
@@ -84,14 +84,11 @@ def extraer_alkosto(page):
                     precio_alto = precios_unicos[0]
                     precio_oferta = precios_unicos[-1] if len(precios_unicos) >= 2 else precio_alto
 
-                    # Si no se halló porcentaje en texto pero hay dos precios, calcularlo matemáticamente
                     if porcentaje_val == 0 and precio_alto > precio_oferta and precio_alto > 0:
                         porcentaje_val = int(((precio_alto - precio_oferta) / precio_alto) * 100)
                         if porcentaje_val > 0:
                             descuento_txt = f"-{porcentaje_val}%"
 
-                    # FILTRO TÁCTICO: Si se exige descuento fuerte, aquí podemos asegurar que entre lo jugoso
-                    # (Si quiere que pasen todas las ofertas sin excepción, dejamos pasar todo lo detectado)
                     str_precio_normal = f"${precio_alto:,.0f}".replace(",", ".")
                     str_precio_oferta = f"${precio_oferta:,.0f}".replace(",", ".")
 
