@@ -1,12 +1,11 @@
-from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
 import re
 
-def extraer_alkosto(page_param=None):
+async def extraer_alkosto(page_param=None):
     ofertas = []
     
-    with sync_playwright() as p:
-        # Lanzar navegador con argumentos tácticos anti-detección
-        browser = p.chromium.launch(
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
             headless=True,
             args=[
                 "--disable-blink-features=AutomationControlled",
@@ -17,8 +16,7 @@ def extraer_alkosto(page_param=None):
             ]
         )
         
-        # Crear contexto con apariencia 100% real de Windows y Chrome
-        context = browser.new_context(
+        context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             viewport={"width": 1366, "height": 768},
             extra_http_headers={
@@ -30,52 +28,44 @@ def extraer_alkosto(page_param=None):
             }
         )
         
-        page = context.new_page()
-        
-        # Ocultar la propiedad de automatización para evitar bloqueos
-        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        page = await context.new_page()
+        await page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
         try:
             url = "https://www.alkosto.com/ofertas/c/ofertas-alkosto"
-            print(f"\n--- [NAVEGADOR REAL ALKOSTO] Desplegando en: {url} ---")
+            print(f"\n--- [NAVEGADOR ASÍNCRONO ALKOSTO] Desplegando en: {url} ---")
             
-            page.goto(url, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(6000)
+            await page.goto(url, timeout=60000, wait_until="domcontentloaded")
+            await page.wait_for_timeout(6000)
             
-            # Hacer scroll gradual para forzar la carga asíncrona de la vitrina completa
             for _ in range(6):
-                page.mouse.wheel(0, 3000)
-                page.wait_for_timeout(2000)
+                await page.mouse.wheel(0, 3000)
+                await page.wait_for_timeout(2000)
             
-            # Capturar todas las tarjetas de productos posibles
-            tarjetas = page.locator("li.product-item, div.product__item, div[class*='product-card'], article").all()
+            tarjetas = await page.locator("li.product-item, div.product__item, div[class*='product-card'], article").all()
             print(f"    📊 Tarjetas detectadas en pantalla: {len(tarjetas)}")
             
             for tarjeta in tarjetas:
                 try:
-                    texto_tarjeta = tarjeta.inner_text()
+                    texto_tarjeta = await tarjeta.inner_text()
                     
-                    # FILTRO LÁSER ESTRICTO: Exigir el signo menos y un descuento de -50% o más
                     match_pct = re.search(r'-\s*(5[0-9]|[6-9]\d|100)\s*%', texto_tarjeta)
                     if not match_pct:
                         continue
                     
                     descuento_txt = match_pct.group(0).replace(" ", "")
                     
-                    # Extraer enlace directo del producto
                     link_elem = tarjeta.locator("a[href*='/p/']").first
-                    href = link_elem.get_attribute("href") if link_elem.count() > 0 else ""
+                    href = await link_elem.get_attribute("href") if await link_elem.count() > 0 else ""
                     if not href:
                         continue
                     enlace_producto = href if href.startswith("http") else f"https://www.alkosto.com{href}"
                     
-                    # Extraer imagen principal
                     img_elem = tarjeta.locator("img").first
                     img_url = ""
-                    if img_elem.count() > 0:
-                        img_url = img_elem.get_attribute("src") or img_elem.get_attribute("data-src") or ""
+                    if await img_elem.count() > 0:
+                        img_url = await img_elem.get_attribute("src") or await img_elem.get_attribute("data-src") or ""
                     
-                    # Limpiar nombre y precios del bloque de texto
                     lineas = [l.strip() for l in texto_tarjeta.split('\n') if l.strip()]
                     nombre = next((l for l in lineas if len(l) > 10 and '$' not in l and '%' not in l), "Producto en Descuento Masivo")
                     
@@ -97,7 +87,7 @@ def extraer_alkosto(page_param=None):
                     str_precio_oferta = f"${precio_oferta:,.0f}".replace(",", ".")
                     img_final = img_url if img_url.startswith("http") else "https://via.placeholder.com/200?text=Alkosto"
                     
-                    print(f"    🔥 [GANGÓN NAVEGADOR REAL {descuento_txt}] {nombre[:35]} | Oferta: {str_precio_oferta}")
+                    print(f"    🔥 [GANGÓN ASÍNCRONO {descuento_txt}] {nombre[:35]} | Oferta: {str_precio_oferta}")
                     
                     ofertas.append({
                         "Nombre": nombre,
@@ -107,15 +97,15 @@ def extraer_alkosto(page_param=None):
                         "Enlace Directo": enlace_producto,
                         "Imagen": img_final,
                         "Almacen": "Alkosto",
-                        "Categoria": "Navegador Blindado"
+                        "Categoria": "Navegador Asíncrono"
                     })
                 except Exception:
                     continue
                     
         except Exception as e:
-            print(f"--- [NAVEGADOR REAL ALKOSTO] Error en la ejecución: {str(e)} ---")
+            print(f"--- [NAVEGADOR ASÍNCRONO ALKOSTO] Error en la ejecución: {str(e)} ---")
         finally:
-            browser.close()
+            await browser.close()
             
-    print(f"\n--- [NAVEGADOR REAL ALKOSTO] TOTAL GANGAS REALES CAPTURADAS: {len(ofertas)} ---\n")
+    print(f"\n--- [NAVEGADOR ASÍNCRONO ALKOSTO] TOTAL GANGAS REALES CAPTURADAS: {len(ofertas)} ---\n")
     return ofertas
