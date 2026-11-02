@@ -26,30 +26,23 @@ def _ejecutar_en_hilo():
             url = "https://www.alkosto.com/ofertas/c/ofertas-alkosto"
             print(f"    Navegando a: {url}")
             page.goto(url, timeout=45000, wait_until="domcontentloaded")
-            
-            # Dar tiempo prudente para que cargue el script de la vitrina
-            page.wait_for_timeout(5000)
+            page.wait_for_timeout(6000)
 
-            # Hacer scroll gradual para forzar la carga de productos (lazy load)
-            for i in range(6):
+            for _ in range(6):
                 page.mouse.wheel(0, 3000)
                 page.wait_for_timeout(2500)
             
-            # Apuntar directamente a los contenedores reales de productos de la vitrina de Alkosto
-            tarjetas = page.locator("li.product-item, div.product__item, div[class*='product-card'], article[class*='product']").all()
-            if not tarjetas:
-                tarjetas = page.locator("div.search-result-matched-products, div[class*='grid-item']").all()
-                
-            print(f"    📊 Tarjetas de productos reales detectadas: {len(tarjetas)}")
+            # Selector ultra amplio: busca cualquier tarjeta, artículo o contenedor repetitivo de productos
+            tarjetas = page.locator("div.product-item, li.product-item, div[class*='product'], article, div[class*='grid-item'], a[href*='/p/']").all()
             
-            for index, tarjeta in enumerate(tarjetas):
+            print(f"    📊 Contenedores detectados en vitrina: {len(tarjetas)}")
+            
+            for tarjeta in tarjetas:
                 try:
                     texto_tarjeta = tarjeta.inner_text()
+                    if not texto_tarjeta or len(texto_tarjeta) < 15:
+                        continue
                     
-                    # Imprimir un poco de texto de las primeras 3 tarjetas para depuración en consola
-                    if index < 3:
-                        print(f"    🔎 [Depuración Tarjeta {index+1}]: {texto_tarjeta.replace(chr(10), ' ')[:100]}...")
-
                     match_pct = re.search(r'(?:-\s*)?([5-9][0-9]|100)\s*%', texto_tarjeta)
                     if not match_pct:
                         continue
@@ -60,14 +53,22 @@ def _ejecutar_en_hilo():
                         
                     descuento_txt = f"-{descuento_num}%"
                     
-                    link_elem = tarjeta.locator("a[href*='/p/']").first
-                    href = link_elem.get_attribute("href") if link_elem.count() > 0 else ""
-                    if not href:
-                        link_elem = tarjeta.locator("a").first
-                        href = link_elem.get_attribute("href") if link_elem.count() > 0 else ""
+                    # Obtener enlace
+                    href = ""
+                    if tarjeta.evaluate("el => el.tagName") == "A":
+                        href = tarjeta.get_attribute("href") or ""
+                    else:
+                        link_elem = tarjeta.locator("a[href*='/p/']").first
+                        if link_elem.count() > 0:
+                            href = link_elem.get_attribute("href") or ""
+                        else:
+                            link_elem = tarjeta.locator("a").first
+                            if link_elem.count() > 0:
+                                href = link_elem.get_attribute("href") or ""
                     
-                    if not href:
+                    if not href or '/p/' not in href:
                         continue
+                        
                     enlace_producto = href if href.startswith("http") else f"https://www.alkosto.com{href}"
                     
                     img_elem = tarjeta.locator("img").first
@@ -111,7 +112,9 @@ def _ejecutar_en_hilo():
         except Exception as e:
             print(f"--- [Error crítico en Alkosto] {str(e)} ---")
             
-    return ofertas
+    # Eliminar duplicados basándose en el enlace
+    unicas = {o['Enlace Directo']: o for o in ofertas}.values()
+    return list(unicas)
 
 def extraer_alkosto(page_param=None):
     print("\n--- [ALKOSTO] Iniciando extractor en hilo aislado ---")
