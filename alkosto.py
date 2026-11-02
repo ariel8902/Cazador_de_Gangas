@@ -32,28 +32,30 @@ def _ejecutar_en_hilo():
                 page.mouse.wheel(0, 3000)
                 page.wait_for_timeout(2500)
             
-            # Selector ultra amplio: busca cualquier tarjeta, artículo o contenedor repetitivo de productos
             tarjetas = page.locator("div.product-item, li.product-item, div[class*='product'], article, div[class*='grid-item'], a[href*='/p/']").all()
-            
             print(f"    📊 Contenedores detectados en vitrina: {len(tarjetas)}")
             
-            for tarjeta in tarjetas:
+            for index, tarjeta in enumerate(tarjetas):
                 try:
                     texto_tarjeta = tarjeta.inner_text()
-                    if not texto_tarjeta or len(texto_tarjeta) < 15:
+                    if not texto_tarjeta or len(texto_tarjeta) < 10:
                         continue
                     
-                    match_pct = re.search(r'(?:-\s*)?([5-9][0-9]|100)\s*%', texto_tarjeta)
+                    # Mostrar en consola el texto de las primeras tarjetas para inspección
+                    if index < 5:
+                        print(f"    🔎 [Contenedor {index+1}]: {texto_tarjeta.replace(chr(10), ' | ')[:120]}...")
+
+                    # Búsqueda flexible de porcentajes
+                    match_pct = re.search(r'(?:-\s*)?([4-9][0-9]|100)\s*%', texto_tarjeta)
                     if not match_pct:
                         continue
                     
                     descuento_num = int(match_pct.group(1))
-                    if descuento_num < 50:
+                    if descuento_num < 40: # Relajamos temporalmente a 40% para probar captura
                         continue
                         
                     descuento_txt = f"-{descuento_num}%"
                     
-                    # Obtener enlace
                     href = ""
                     if tarjeta.evaluate("el => el.tagName") == "A":
                         href = tarjeta.get_attribute("href") or ""
@@ -66,7 +68,7 @@ def _ejecutar_en_hilo():
                             if link_elem.count() > 0:
                                 href = link_elem.get_attribute("href") or ""
                     
-                    if not href or '/p/' not in href:
+                    if not href or ('/p/' not in href and 'http' not in href):
                         continue
                         
                     enlace_producto = href if href.startswith("http") else f"https://www.alkosto.com{href}"
@@ -83,7 +85,7 @@ def _ejecutar_en_hilo():
                     precios_num = []
                     for pr in precios:
                         num = re.sub(r'[^\d]', '', pr)
-                        if num and int(num) > 50000:
+                        if num and int(num) > 30000:
                             precios_num.append(int(num))
                     
                     precios_num = sorted(list(set(precios_num)), reverse=True)
@@ -112,7 +114,6 @@ def _ejecutar_en_hilo():
         except Exception as e:
             print(f"--- [Error crítico en Alkosto] {str(e)} ---")
             
-    # Eliminar duplicados basándose en el enlace
     unicas = {o['Enlace Directo']: o for o in ofertas}.values()
     return list(unicas)
 
