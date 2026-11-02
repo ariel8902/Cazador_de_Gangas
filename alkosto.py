@@ -8,8 +8,8 @@ def limpiar_precio(texto_precio):
 
 def extraer_alkosto(page):
     """
-    Extractor definitivo de Alkosto calibrado.
-    Acepta tarjetas de productos físicos con precio único o con descuento.
+    Extractor de Alkosto calibrado a partir del código de terminal funcional.
+    Capta productos reales de la grilla sin descartes por precio único.
     """
     ofertas = []
     categorias_urls = [
@@ -32,7 +32,7 @@ def extraer_alkosto(page):
             page.mouse.wheel(0, 1200)
             time.sleep(2.0)
 
-            # Selectores de grilla confirmados en la prueba anterior (7 tarjetas por sección)
+            # Selectores confirmados (7 tarjetas por sección)
             productos = page.query_selector_all("div.product__item, div.ais-Hits-item, li.ais-Hits-item, div[class*='productGrid']")
             if len(productos) == 0:
                 productos = page.query_selector_all("div[class*='product']")
@@ -47,7 +47,7 @@ def extraer_alkosto(page):
                     if "Mostrando" in texto_tarjeta or "resultados" in texto_tarjeta:
                         continue
 
-                    # 1. Enlace directo al producto (/p/)
+                    # 1. Enlace al producto (Debe contener /p/)
                     enlace_element = card.query_selector("a[href*='/p/'], a.product__item__top__link")
                     enlace_producto = None
 
@@ -65,7 +65,7 @@ def extraer_alkosto(page):
                     if not enlace_producto or "/p/" not in enlace_producto:
                         continue
 
-                    # 2. Nombre del producto
+                    # 2. Extracción de Nombre
                     lineas = [l.strip() for l in texto_tarjeta.split('\n') if l.strip()]
                     if not lineas:
                         continue
@@ -80,20 +80,16 @@ def extraer_alkosto(page):
                     if not nombre:
                         continue
 
-                    # 3. Lectura flexible de precios (descartando cuotas menores a $100.000)
+                    # 3. Lectura de precios sin descarte rígido
                     precios_raw = [l for l in lineas if '$' in l]
                     precios_num = [limpiar_precio(p) for p in precios_raw if limpiar_precio(p) > 100000]
                     precios_unicos = sorted(list(dict.fromkeys(precios_num)), reverse=True)
 
                     if not precios_unicos:
-                        continue  # Si no hay precios > 100.000 se omite
+                        continue
 
-                    if len(precios_unicos) >= 2:
-                        precio_alto = precios_unicos[0]
-                        precio_oferta = precios_unicos[-1]
-                    else:
-                        precio_alto = precios_unicos[0]
-                        precio_oferta = precios_unicos[0]
+                    precio_alto = precios_unicos[0]
+                    precio_oferta = precios_unicos[-1] if len(precios_unicos) >= 2 else precio_alto
 
                     descuento_txt = "Oferta"
                     if precio_alto > precio_oferta:
@@ -103,7 +99,7 @@ def extraer_alkosto(page):
                     str_precio_normal = f"${precio_alto:,.0f}".replace(",", ".")
                     str_precio_oferta = f"${precio_oferta:,.0f}".replace(",", ".")
 
-                    # 4. Imagen
+                    # 4. Captura de Imagen
                     img_elem = card.query_selector("img")
                     imagen_url = "https://via.placeholder.com/200?text=Alkosto+Oferta"
                     if img_elem:
@@ -112,7 +108,7 @@ def extraer_alkosto(page):
                             imagen_url = src if src.startswith("http") else f"https:{src}"
 
                     if muestras < 3:
-                        print(f"\n    🔥 [PRODUCTO VALIDADOR] {nombre[:45]}")
+                        print(f"\n    🔥 [PRODUCTO CAPTURADO] {nombre[:45]}")
                         print(f"       -> Oferta: {str_precio_oferta} | Normal: {str_precio_normal} ({descuento_txt})")
                         print(f"       -> Enlace: {enlace_producto[:60]}...")
                         muestras += 1
