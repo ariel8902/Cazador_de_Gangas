@@ -1,9 +1,9 @@
-from playwright.async_api import async_playwright
+import asyncio
 import re
+from playwright.async_api import async_playwright
 
-async def extraer_alkosto(page_param=None):
+async def _ejecutar_extractor():
     ofertas = []
-    
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=True,
@@ -15,40 +15,29 @@ async def extraer_alkosto(page_param=None):
                 "--disable-gpu"
             ]
         )
-        
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            viewport={"width": 1366, "height": 768},
-            extra_http_headers={
-                "Accept-Language": "es-ES,es;q=0.9",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                "Sec-Ch-Ua": '"Chromium";v="122", "Not(A:Brand";v="8", "Google Chrome";v="122"',
-                "Sec-Ch-Ua-Mobile": "?0",
-                "Sec-Ch-Ua-Platform": '"Windows"'
-            }
+            viewport={"width": 1366, "height": 768}
         )
-        
         page = await context.new_page()
         await page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
         try:
             url = "https://www.alkosto.com/ofertas/c/ofertas-alkosto"
-            print(f"\n--- [NAVEGADOR ASÍNCRONO ALKOSTO] Desplegando en: {url} ---")
-            
+            print(f"\n--- [NAVEGADOR ALKOSTO] Conectando a: {url} ---")
             await page.goto(url, timeout=60000, wait_until="domcontentloaded")
-            await page.wait_for_timeout(6000)
+            await page.wait_for_timeout(5000)
             
-            for _ in range(6):
+            for _ in range(5):
                 await page.mouse.wheel(0, 3000)
                 await page.wait_for_timeout(2000)
             
             tarjetas = await page.locator("li.product-item, div.product__item, div[class*='product-card'], article").all()
-            print(f"    📊 Tarjetas detectadas en pantalla: {len(tarjetas)}")
+            print(f"    📊 Tarjetas detectadas: {len(tarjetas)}")
             
             for tarjeta in tarjetas:
                 try:
                     texto_tarjeta = await tarjeta.inner_text()
-                    
                     match_pct = re.search(r'-\s*(5[0-9]|[6-9]\d|100)\s*%', texto_tarjeta)
                     if not match_pct:
                         continue
@@ -83,29 +72,40 @@ async def extraer_alkosto(page_param=None):
                     precio_alto = precios_num[0]
                     precio_oferta = precios_num[-1] if len(precios_num) >= 2 else precio_alto
                     
-                    str_precio_normal = f"${precio_alto:,.0f}".replace(",", ".")
-                    str_precio_oferta = f"${precio_oferta:,.0f}".replace(",", ".")
-                    img_final = img_url if img_url.startswith("http") else "https://via.placeholder.com/200?text=Alkosto"
-                    
-                    print(f"    🔥 [GANGÓN ASÍNCRONO {descuento_txt}] {nombre[:35]} | Oferta: {str_precio_oferta}")
-                    
                     ofertas.append({
                         "Nombre": nombre,
-                        "Precio Normal": str_precio_normal,
-                        "Precio Oferta": str_precio_oferta,
+                        "Precio Normal": f"${precio_alto:,.0f}".replace(",", "."),
+                        "Precio Oferta": f"${precio_oferta:,.0f}".replace(",", "."),
                         "Descuento": descuento_txt,
                         "Enlace Directo": enlace_producto,
-                        "Imagen": img_final,
+                        "Imagen": img_url if img_url.startswith("http") else "https://via.placeholder.com/200?text=Alkosto",
                         "Almacen": "Alkosto",
-                        "Categoria": "Navegador Asíncrono"
+                        "Categoria": "Navegador Blindado"
                     })
                 except Exception:
                     continue
-                    
         except Exception as e:
-            print(f"--- [NAVEGADOR ASÍNCRONO ALKOSTO] Error en la ejecución: {str(e)} ---")
+            print(f"--- [Error Alkosto] {str(e)} ---")
         finally:
             await browser.close()
             
-    print(f"\n--- [NAVEGADOR ASÍNCRONO ALKOSTO] TOTAL GANGAS REALES CAPTURADAS: {len(ofertas)} ---\n")
+    print(f"\n--- [ALKOSTO] Total gangas capturadas: {len(ofertas)} ---\n")
     return ofertas
+
+def extraer_alkosto(page_param=None):
+    """Función puente síncrona compatible con el orquestador principal"""
+    try:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # Si ya hay un loop corriendo, creamos la tarea de forma segura
+            future = asyncio.run_coroutine_threadsafe(_ejecutar_extractor(), loop)
+            return future.result()
+        else:
+            return asyncio.run(_ejecutar_extractor())
+    except Exception as e:
+        print(f"Error ejecutando extractor de Alkosto: {str(e)}")
+        return []
