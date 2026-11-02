@@ -8,8 +8,8 @@ def limpiar_precio(texto_precio):
 
 def extraer_alkosto(page):
     """
-    Extractor definitivo de Alkosto.
-    Fuerza la espera del renderizado dinámico para evitar capturar cascarones vacíos en GitHub Actions.
+    Extractor definitivo de Alkosto que unifica la detección flexible de tarjetas 
+    con la lectura limpia de textos y precios.
     """
     ofertas = []
     categorias_urls = [
@@ -23,63 +23,62 @@ def extraer_alkosto(page):
             print(f"\n--- [EXTRACTOR ALKOSTO] Rastreando categoría: {cat_nombre} ---")
             
             try:
-                page.goto(url, timeout=60000, wait_until="networkidle")
-            except Exception:
                 page.goto(url, timeout=60000, wait_until="domcontentloaded")
+            except Exception as e:
+                print(f"    ⚠️ Advertencia en carga de página: {e}")
+                continue
 
-            # Espera explícita a que los enlaces de producto reales existan en el DOM
-            try:
-                page.wait_for_selector("a[href*='/p/']", timeout=15000)
-            except Exception:
-                pass
+            time.sleep(random.uniform(4.0, 5.0))
+            page.mouse.wheel(0, 1200)
+            time.sleep(2.0)
 
-            # Scroll escalonado para disparar el lazy-loading de precios e imágenes
-            for i in range(4):
-                page.evaluate(f"window.scrollTo(0, {(i + 1) * 700});")
-                time.sleep(1.0)
+            # Selector flexible probado que sí detectaba las tarjetas
+            productos = page.query_selector_all("div.product__item, div.ais-Hits-item, li.ais-Hits-item, div[class*='productGrid']")
+            if len(productos) == 0:
+                productos = page.query_selector_all("div[class*='product']")
 
-            # Búsqueda directa sobre tarjetas que tengan enlace /p/ real
-            tarjetas = page.query_selector_all("li.product__item, div.product__item, form.product-item")
-            if not tarjetas:
-                tarjetas = page.query_selector_all("li.ais-Hits-item, div.ais-Hits-item")
-
-            print(f"    📊 Tarjetas reales detectadas en Alkosto ({cat_nombre}): {len(tarjetas)}")
+            print(f"    📊 Tarjetas totales detectadas en Alkosto ({cat_nombre}): {len(productos)}")
 
             muestras = 0
 
-            for card in tarjetas:
+            for card in productos:
                 try:
                     texto_tarjeta = card.inner_text()
-                    if not texto_tarjeta or "Mostrando" in texto_tarjeta:
+                    if not texto_tarjeta or "Mostrando" in texto_tarjeta or "resultados" in texto_tarjeta:
                         continue
 
-                    # Enlace directo
-                    enlace_elem = card.query_selector("a[href*='/p/']")
-                    if not enlace_elem:
+                    # Enlace directo buscando cualquier enlace con /p/ dentro de la tarjeta
+                    enlace_element = card.query_selector("a[href*='/p/']")
+                    if not enlace_element:
+                        enlace_element = card.query_selector("a[href]")
+
+                    if not enlace_element:
                         continue
 
-                    href = enlace_elem.get_attribute("href")
-                    if not href:
+                    href = enlace_element.get_attribute("href")
+                    if not href or ("/c/" in href and "/p/" not in href):
                         continue
-                    
-                    enlace_producto = f"https://www.alkosto.com{href}" if href.startswith("/") else href
 
-                    # Nombre
+                    enlace_producto = href if href.startswith("http") else f"https://www.alkosto.com{href if href.startswith('/') else '/' + href}"
+
+                    # Nombre del producto
                     lineas = [l.strip() for l in texto_tarjeta.split('\n') if l.strip()]
+                    if not lineas:
+                        continue
+
                     nombre = None
                     palabras_omitir = ['envío', 'garantía', 'seguro', 'cuota', 'opiniones', 'agotado', 'mostrando', 'paga a cuotas']
-                    
                     for linea in lineas:
                         if '$' not in linea and len(linea) > 8 and not any(k in linea.lower() for k in palabras_omitir):
                             nombre = linea
                             break
 
                     if not nombre:
-                        continue
+                        nombre = lineas[0] # Respaldo con la primera línea si cumple longitud
 
                     # Precios
                     precios_raw = [l for l in lineas if '$' in l]
-                    precios_num = [limpiar_precio(p) for p in precios_raw if limpiar_precio(p) > 100000]
+                    precios_num = [limpiar_precio(p) for p in precios_raw if limpiar_precio(p) > 50000]
                     precios_unicos = sorted(list(dict.fromkeys(precios_num)), reverse=True)
 
                     if not precios_unicos:
@@ -105,7 +104,7 @@ def extraer_alkosto(page):
                             imagen_url = src if src.startswith("http") else f"https:{src}"
 
                     if muestras < 3:
-                        print(f"\n    🔥 [PRODUCTO POBLADO REAL] {nombre[:45]}")
+                        print(f"\n    🔥 [OFERTA CAPTURADA] {nombre[:45]}")
                         print(f"       -> Oferta: {str_precio_oferta} | Normal: {str_precio_normal} ({descuento_txt})")
                         print(f"       -> Enlace: {enlace_producto[:60]}...")
                         muestras += 1
@@ -123,6 +122,8 @@ def extraer_alkosto(page):
 
                 except Exception:
                     continue
+
+            time.sleep(random.uniform(1.0, 2.0))
 
         except Exception as e:
             print(f"--- [EXTRACTOR ALKOSTO] Error general en categoría {cat_nombre}: {str(e)} ---")
