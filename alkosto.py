@@ -1,113 +1,18 @@
-import re
-import concurrent.futures
-from playwright.sync_api import sync_playwright
-
-def _ejecutar_en_hilo():
-    ofertas = []
-    with sync_playwright() as p:
-        try:
-            browser = p.chromium.launch(
-                headless=True,
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu"
-                ]
-            )
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                viewport={"width": 1366, "height": 768}
-            )
-            page = context.new_page()
-            page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            
-            url = "https://www.alkosto.com/ofertas/c/ofertas-alkosto"
-            print(f"    Navegando a: {url}")
-            page.goto(url, timeout=40000, wait_until="domcontentloaded")
-            
-            # Esperar a que el contenedor principal o las tarjetas aparezcan obligatoriamente en el DOM
+# Esperar a que carguen los enlaces de productos de VTEX
             try:
-                page.wait_for_selector("li.product-item, div.product__item, div[class*='product-card'], article, div.search-result", timeout=12000)
+                page.wait_for_selector("a[href*='/p/']", timeout=12000)
             except Exception:
-                print("    ⚠️ Advertencia: Timeout esperando selectores estándar, procediendo con scroll forzado...")
+                print("    ⚠️ Advertencia: Timeout esperando enlaces de productos...")
 
-            # Hacer scroll gradual para activar el lazy load de las imágenes y productos
+            # Hacer scroll gradual para activar el lazy load
             for _ in range(5):
                 page.mouse.wheel(0, 2500)
                 page.wait_for_timeout(2000)
             
-            # Selectores ampliados para atrapar cualquier estructura de VTEX
-            tarjetas = page.locator("li.product-item, div.product__item, div[class*='product-card'], article, div[class*='search-result']").all()
-            print(f"    📊 Tarjetas detectadas: {len(tarjetas)}")
-            
-            for tarjeta in tarjetas:
-                try:
-                    texto_tarjeta = tarjeta.inner_text()
-                    
-                    # Filtro estricto para buscar porcentajes de descuento masivos (-50% o más)
-                    match_pct = re.search(r'-\s*(5[0-9]|[6-9]\d|100)\s*%', texto_tarjeta)
-                    if not match_pct:
-                        continue
-                    
-                    descuento_txt = match_pct.group(0).replace(" ", "")
-                    
-                    link_elem = tarjeta.locator("a[href*='/p/']").first
-                    href = link_elem.get_attribute("href") if link_elem.count() > 0 else ""
-                    if not href:
-                        continue
-                    enlace_producto = href if href.startswith("http") else f"https://www.alkosto.com{href}"
-                    
-                    img_elem = tarjeta.locator("img").first
-                    img_url = ""
-                    if img_elem.count() > 0:
-                        img_url = img_elem.get_attribute("src") or img_elem.get_attribute("data-src") or ""
-                    
-                    lineas = [l.strip() for l in texto_tarjeta.split('\n') if l.strip()]
-                    nombre = next((l for l in lineas if len(l) > 10 and '$' not in l and '%' not in l), "Producto en Descuento Masivo")
-                    
-                    precios = [l for l in lineas if '$' in l]
-                    precios_num = []
-                    for pr in precios:
-                        num = re.sub(r'[^\d]', '', pr)
-                        if num and int(num) > 100000:
-                            precios_num.append(int(num))
-                    
-                    precios_num = sorted(list(set(precios_num)), reverse=True)
-                    if not precios_num:
-                        continue
-                        
-                    precio_alto = precios_num[0]
-                    precio_oferta = precios_num[-1] if len(precios_num) >= 2 else precio_alto
-                    
-                    print(f"    🔥 [GANGÓN CAPTURADO {descuento_txt}] {nombre[:30]} | Precio: ${precio_oferta:,.0f}")
-
-                    ofertas.append({
-                        "Nombre": nombre,
-                        "Precio Normal": f"${precio_alto:,.0f}".replace(",", "."),
-                        "Precio Oferta": f"${precio_oferta:,.0f}".replace(",", "."),
-                        "Descuento": descuento_txt,
-                        "Enlace Directo": enlace_producto,
-                        "Imagen": img_url if img_url.startswith("http") else "https://via.placeholder.com/200?text=Alkosto",
-                        "Almacen": "Alkosto",
-                        "Categoria": "Navegador Hilo Aislado"
-                    })
-                except Exception:
-                    continue
-                    
-            browser.close()
-        except Exception as e:
-            print(f"--- [Error crítico en Alkosto] {str(e)} ---")
-            
-    return ofertas
-
-def extraer_alkosto(page_param=None):
-    print("\n--- [ALKOSTO] Iniciando extractor en hilo aislado ---")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(_ejecutar_en_hilo)
-        try:
-            return future.result(timeout=60)
-        except Exception as e:
-            print(f"--- [Error de Timeout/Hilo Alkosto] {str(e)} ---")
-            return []
+            # Apuntar directamente a los contenedores que posean enlaces de productos de Alkosto
+            tarjetas = page.locator("div.product-item, li.product-item, div[class*='product-card'], article, div[class*='product-summary']").all()
+            if not tarjetas or len(tarjetas) <= 1:
+                # Si el contenedor general es muy amplio, capturamos los bloques 'article' o elementos de lista
+                tarjetas = page.locator("article, li, div[class*='item']").all()
+                
+            print(f"    📊 Elementos de productos detectados: {len(tarjetas)}")
