@@ -1,11 +1,9 @@
 import re
+import concurrent.futures
 from playwright.sync_api import sync_playwright
 
-def extraer_alkosto(page_param=None):
+def _ejecutar_en_hilo():
     ofertas = []
-    
-    print("\n--- [ALKOSTO SÍNCRONO AUTÓNOMO] Iniciando extracción ---")
-    
     with sync_playwright() as p:
         try:
             browser = p.chromium.launch(
@@ -82,7 +80,7 @@ def extraer_alkosto(page_param=None):
                         "Enlace Directo": enlace_producto,
                         "Imagen": img_url if img_url.startswith("http") else "https://via.placeholder.com/200?text=Alkosto",
                         "Almacen": "Alkosto",
-                        "Categoria": "Autónomo Síncrono"
+                        "Categoria": "Hilo Aislado Síncrono"
                     })
                 except Exception:
                     continue
@@ -91,5 +89,14 @@ def extraer_alkosto(page_param=None):
         except Exception as e:
             print(f"--- [Error crítico en Alkosto] {str(e)} ---")
             
-    print(f"\n--- [ALKOSTO] Total ofertas recolectadas: {len(ofertas)} ---\n")
     return ofertas
+
+def extraer_alkosto(page_param=None):
+    print("\n--- [ALKOSTO] Iniciando extractor en hilo aislado ---")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_ejecutar_en_hilo)
+        try:
+            return future.result(timeout=50)
+        except Exception as e:
+            print(f"--- [Error de Timeout/Hilo Alkosto] {str(e)} ---")
+            return []
