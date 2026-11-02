@@ -15,7 +15,7 @@ def extraer_alkosto(page):
 
     for cat_nombre, url in categorias_urls:
         try:
-            print(f"\n--- [EXTRACTOR ALKOSTO] Buscando gangas >=50% en: {cat_nombre} ---")
+            print(f"\n--- [EXTRACTOR ALKOSTO] Cazando ofertas reales en: {cat_nombre} ---")
             
             try:
                 page.goto(url, timeout=60000, wait_until="domcontentloaded")
@@ -40,7 +40,7 @@ def extraer_alkosto(page):
                     enlaces_procesados.add(href)
                     enlace_producto = href if href.startswith("http") else f"https://www.alkosto.com{href}"
 
-                    # Capturar imagen real
+                    # Capturar imagen real del producto
                     img_url = "https://via.placeholder.com/200?text=Alkosto+Oferta"
                     try:
                         card_element = link.evaluate_handle("el => el.closest('li, div.product__item, div.grid-item') || el")
@@ -52,50 +52,61 @@ def extraer_alkosto(page):
                     except Exception:
                         pass
 
-                    # Obtener texto del bloque
-                    texto = link.evaluate("el => { let p = el.closest('div, li'); return p ? p.innerText : el.innerText; }") or ""
+                    # Extracción avanzada: Buscar tanto el texto interno como las etiquetas flotantes de descuento (-54%)
+                    datos_tarjeta = link.evaluate("""el => {
+                        let card = el.closest('li, div.product__item, div.grid-item') || el;
+                        let text = card.innerText || '';
+                        // Buscar elementos que parezcan etiquetas de descuento o porcentajes
+                        let badges = card.querySelectorAll('span, div, p');
+                        let badgeTexts = [];
+                        badges.forEach(b => {
+                            if (b.innerText.includes('%') || b.innerText.includes('-')) {
+                                badgeTexts.push(b.innerText.trim());
+                            }
+                        });
+                        return { text: text, badges: badgeTexts.join(' | ') };
+                    }""")
                     
-                    lineas = [l.strip() for l in texto.split('\n') if l.strip()]
+                    texto_completo = datos_tarjeta['text'] + " | " + datos_tarjeta['badges']
+                    lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
                     if not lineas:
                         continue
 
-                    nombre = next((l for l in lineas if len(l) > 8 and '$' not in l), lineas[0])
+                    nombre = next((l for l in lineas if len(l) > 8 and '$' not in l and '%' not in l), lineas[0])
 
-                    # REGLA DE ORO: Buscar explícitamente el porcentaje de descuento en el texto
+                    # Buscar el porcentaje exacto (ej: -54%, 54%)
                     descuento_val = 0
-                    for linea in lineas:
-                        if '%' in linea:
-                            match_pct = re.search(r'(\d+)\s*%', linea)
-                            if match_pct:
-                                val = int(match_pct.group(1))
-                                if val > descuento_val:
-                                    descuento_val = val
+                    match_pct = re.search(r'-?(\d+)\s*%', texto_completo)
+                    if match_pct:
+                        descuento_val = int(match_pct.group(1))
 
-                    # Si no encuentra un porcentaje impreso, calculamos con los precios del bloque
+                    descuento_txt = f"-{descuento_val}%" if descuento_val > 0 else "Oferta"
+
+                    # Extraer precios limpios omitiendo cuotas bajas (mínimo 150k para equipos reales)
                     precios_raw = [l for l in lineas if '$' in l]
-                    precios_num = [limpiar_precio(p) for p in precios_raw if limpiar_precio(p) > 100000] # Omitir valores menores a 100k (cuotas)
+                    precios_num = [limpiar_precio(p) for p in precios_raw if limpiar_precio(p) > 150000]
                     precios_unicos = sorted(list(dict.fromkeys(precios_num)), reverse=True)
 
-                    if len(precios_unicos) >= 2:
-                        p_alto = precios_unicos[0]
-                        p_oferta = precios_unicos[-1]
-                        if p_alto > p_oferta and p_alto > 0:
-                            calc_pct = int(((p_alto - p_oferta) / p_alto) * 100)
-                            if calc_pct > descuento_val:
-                                descuento_val = calc_pct
+                    if not precios_unicos:
+                        continue
 
-                    # FILTRO ESTRICTO: Si el descuento es menor al 50%, SE DESCARTA DE UNA VEZ
+                    precio_alto = precios_unicos[0]
+                    precio_oferta = precios_unicos[-1] if len(precios_unicos) >= 2 else precio_alto
+
+                    # Si no cogió porcentaje por texto pero hay diferencia de precios matemáticos
+                    if descuento_val == 0 and precio_alto > precio_oferta and precio_alto > 0:
+                        descuento_val = int(((precio_alto - precio_oferta) / precio_alto) * 100)
+                        if descuento_val > 0:
+                            descuento_txt = f"-{descuento_val}%"
+
+                    # REGLA DE ORO: Exigir que tenga un descuento real del 50% o más (o el que detecte la etiqueta)
                     if descuento_val < 50:
                         continue
 
-                    precio_alto = precios_unicos[0] if precios_unicos else 0
-                    precio_oferta = precios_unicos[-1] if len(precios_unicos) >= 2 else precio_alto
-
                     str_precio_normal = f"${precio_alto:,.0f}".replace(",", ".")
                     str_precio_oferta = f"${precio_oferta:,.0f}".replace(",", ".")
-                    descuento_txt = f"-{descuento_val}%"
 
-                    print(f"    🔥 [GANGA REAL {descuento_txt}] {nombre[:30]} | Oferta: {str_precio_oferta}")
+                    print(f"    🔥 [OFERTA REAL {descuento_txt}] {nombre[:30]} | Oferta: {str_precio_oferta}")
 
                     ofertas.append({
                         "Nombre": nombre,
@@ -114,5 +125,5 @@ def extraer_alkosto(page):
         except Exception as e:
             print(f"--- [EXTRACTOR ALKOSTO] Error en {cat_nombre}: {str(e)} ---")
 
-    print(f"\n--- [EXTRACTOR ALKOSTO] TOTAL GANGAGAS >=50%: {len(ofertas)} ---\n")
+    print(f"\n--- [EXTRACTOR ALKOSTO] TOTAL GANGAS REALES: {len(ofertas)} ---\n")
     return ofertas
