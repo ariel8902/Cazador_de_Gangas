@@ -22,69 +22,65 @@ def extraer_alkosto(page):
             except Exception:
                 pass
 
-            time.sleep(3.0)
-            page.mouse.wheel(0, 1000)
+            time.sleep(4.0)
+            page.mouse.wheel(0, 1200)
             time.sleep(2.0)
 
-            productos_links = page.query_selector_all("a[href*='/p/']")
-            print(f"    📊 Enlaces encontrados: {len(productos_links)}")
+            # Buscar contenedores de productos de Alkosto
+            productos = page.query_selector_all("div.product__item, li.product-item, div.grid-item, .vtex-product-summary-2-x-element")
+            if not productos:
+                # Plan de respaldo: buscar por enlaces si la clase cambia
+                productos = [link.evaluate_handle("el => el.closest('li, div') || el") for link in page.query_selector_all("a[href*='/p/']")]
+
+            print(f"    📊 Tarjetas de producto encontradas: {len(productos)}")
 
             enlaces_procesados = set()
 
-            for link in productos_links:
+            for item in productos:
                 try:
-                    href = link.get_attribute("href")
+                    # Extraer enlace y nombre
+                    link_elem = item.query_selector("a[href*='/p/']") if hasattr(item, 'query_selector') else item
+                    if not link_elem:
+                        continue
+                    
+                    href = link_elem.get_attribute("href")
                     if not href or href in enlaces_procesados:
                         continue
                     
                     enlaces_procesados.add(href)
                     enlace_producto = href if href.startswith("http") else f"https://www.alkosto.com{href}"
 
-                    # Capturar imagen real del producto
-                    img_url = "https://via.placeholder.com/200?text=Alkosto+Oferta"
-                    try:
-                        card_element = link.evaluate_handle("el => el.closest('li, div.product__item, div.grid-item') || el")
-                        img_tag = card_element.as_element().query_selector("img")
-                        if img_tag:
-                            src = img_tag.get_attribute("src") or img_tag.get_attribute("data-src")
-                            if src and src.startswith("http"):
-                                img_url = src
-                    except Exception:
-                        pass
-
-                    # Extracción avanzada: Buscar tanto el texto interno como las etiquetas flotantes de descuento (-54%)
-                    datos_tarjeta = link.evaluate("""el => {
-                        let card = el.closest('li, div.product__item, div.grid-item') || el;
-                        let text = card.innerText || '';
-                        // Buscar elementos que parezcan etiquetas de descuento o porcentajes
-                        let badges = card.querySelectorAll('span, div, p');
-                        let badgeTexts = [];
-                        badges.forEach(b => {
-                            if (b.innerText.includes('%') || b.innerText.includes('-')) {
-                                badgeTexts.push(b.innerText.trim());
-                            }
-                        });
-                        return { text: text, badges: badgeTexts.join(' | ') };
+                    # Extraer texto de la tarjeta y buscar insignias de descuento (-54%)
+                    info_tarjeta = item.evaluate("""el => {
+                        let text = el.innerText || '';
+                        let badge = el.querySelector('.vtex-product-highlights-2-x-productHighlightText, [class*="discount"], [class*="badge"], span');
+                        let badgeText = badge ? badge.innerText : '';
+                        
+                        let img = el.querySelector('img');
+                        let imgSrc = img ? (img.src || img.getAttribute('data-src')) : '';
+                        
+                        return { text: text, badge: badgeText, img: imgSrc };
                     }""")
-                    
-                    texto_completo = datos_tarjeta['text'] + " | " + datos_tarjeta['badges']
-                    lineas = [l.strip() for l in texto_completo.split('\n') if l.strip()]
+
+                    texto_total = info_tarjeta['text'] + " " + info_tarjeta['badge']
+                    lineas = [l.strip() for l in texto_total.split('\n') if l.strip()]
                     if not lineas:
                         continue
 
-                    nombre = next((l for l in lineas if len(l) > 8 and '$' not in l and '%' not in l), lineas[0])
+                    # Nombre limpio del producto
+                    nombre = next((l for l in lineas if len(l) > 10 and '$' not in l and '%' not in l), lineas[0])
 
-                    # Buscar el porcentaje exacto (ej: -54%, 54%)
+                    # Detectar porcentaje de descuento explícito (ej: -54%)
                     descuento_val = 0
-                    match_pct = re.search(r'-?(\d+)\s*%', texto_completo)
+                    match_pct = re.search(r'-?(\d+)\s*%', texto_total)
                     if match_pct:
                         descuento_val = int(match_pct.group(1))
 
                     descuento_txt = f"-{descuento_val}%" if descuento_val > 0 else "Oferta"
 
-                    # Extraer precios limpios omitiendo cuotas bajas (mínimo 150k para equipos reales)
+                    # Extraer precios limpios (excluyendo cuotas menores a 100k)
                     precios_raw = [l for l in lineas if '$' in l]
-                    precios_num = [limpiar_precio(p) for p in precios_raw if limpiar_precio(p) > 150000]
+                    precios_num = [limpiar_precio(p) for p in precios_raw if limpiar_precio(p) > 100000]
                     precios_unicos = sorted(list(dict.fromkeys(precios_num)), reverse=True)
 
                     if not precios_unicos:
@@ -93,20 +89,21 @@ def extraer_alkosto(page):
                     precio_alto = precios_unicos[0]
                     precio_oferta = precios_unicos[-1] if len(precios_unicos) >= 2 else precio_alto
 
-                    # Si no cogió porcentaje por texto pero hay diferencia de precios matemáticos
+                    # Si no hay porcentaje por texto pero hay diferencia de precios
                     if descuento_val == 0 and precio_alto > precio_oferta and precio_alto > 0:
                         descuento_val = int(((precio_alto - precio_oferta) / precio_alto) * 100)
                         if descuento_val > 0:
                             descuento_txt = f"-{descuento_val}%"
 
-                    # REGLA DE ORO: Exigir que tenga un descuento real del 50% o más (o el que detecte la etiqueta)
+                    # REGLA DE ORO: Solo dejar pasar ofertas reales con descuento >= 50%
                     if descuento_val < 50:
                         continue
 
                     str_precio_normal = f"${precio_alto:,.0f}".replace(",", ".")
                     str_precio_oferta = f"${precio_oferta:,.0f}".replace(",", ".")
+                    img_final = info_tarjeta['img'] if info_tarjeta['img'].startswith("http") else "https://via.placeholder.com/200?text=Alkosto"
 
-                    print(f"    🔥 [OFERTA REAL {descuento_txt}] {nombre[:30]} | Oferta: {str_precio_oferta}")
+                    print(f"    🔥 [GANGÓN CAPTURADO {descuento_txt}] {nombre[:30]} | Oferta: {str_precio_oferta}")
 
                     ofertas.append({
                         "Nombre": nombre,
@@ -114,7 +111,7 @@ def extraer_alkosto(page):
                         "Precio Oferta": str_precio_oferta,
                         "Descuento": descuento_txt,
                         "Enlace Directo": enlace_producto,
-                        "Imagen": img_url,
+                        "Imagen": img_final,
                         "Almacen": "Alkosto",
                         "Categoria": cat_nombre
                     })
@@ -125,5 +122,5 @@ def extraer_alkosto(page):
         except Exception as e:
             print(f"--- [EXTRACTOR ALKOSTO] Error en {cat_nombre}: {str(e)} ---")
 
-    print(f"\n--- [EXTRACTOR ALKOSTO] TOTAL GANGAS REALES: {len(ofertas)} ---\n")
+    print(f"\n--- [EXTRACTOR ALKOSTO] TOTAL GANGAS REALES >=50%: {len(ofertas)} ---\n")
     return ofertas
